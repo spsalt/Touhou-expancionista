@@ -1,0 +1,1 @@
+Arquivo genérico para salvar diretórios vazios no git
