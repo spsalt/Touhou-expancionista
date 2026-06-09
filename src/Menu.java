@@ -7,8 +7,6 @@ public class Menu {
     private int time = 0; // Só esperar uns segundois pra ver a troca do gameState
 
     public Menu() {
-
-        
         
     }
 

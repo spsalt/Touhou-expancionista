@@ -2,8 +2,22 @@ package src;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 
-public class Main extends JFrame implements Runnable {
+public class Main extends JFrame implements Runnable, KeyListener {
+
+
+    public static boolean up = false;
+    public static boolean down = false;
+    public static boolean left = false;
+    public static boolean right = false;
+
+    public static boolean z = false;
+    public static boolean x = false;
+    public static boolean enter = false;
+    public static boolean esc = false;
+
 
     /* =========================
             CONFIGURATION
@@ -39,7 +53,10 @@ public class Main extends JFrame implements Runnable {
         setLocationRelativeTo(null);
         setResizable(false);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        addKeyListener(this);
         setVisible(true);
+        setFocusable(true);
+        requestFocusInWindow();
     }
 
     /* =========================
@@ -176,4 +193,98 @@ public class Main extends JFrame implements Runnable {
 
         }
     }
+
+    @Override
+    public void keyPressed(KeyEvent e) {
+
+        switch (e.getKeyCode()) {
+
+            case KeyEvent.VK_W:
+            case KeyEvent.VK_UP:
+                up = true;
+                break;
+
+            case KeyEvent.VK_S:
+            case KeyEvent.VK_DOWN:
+                down = true;
+                break;
+
+            case KeyEvent.VK_A:
+            case KeyEvent.VK_LEFT:
+                left = true;
+                break;
+
+            case KeyEvent.VK_D:
+            case KeyEvent.VK_RIGHT:
+                right = true;
+                break;
+
+            case KeyEvent.VK_Z:
+                z = true;
+                break;
+
+            case KeyEvent.VK_X:
+                x = true;
+                break;
+
+            case KeyEvent.VK_ENTER:
+                enter = true;
+                break;
+
+            case KeyEvent.VK_ESCAPE:
+                esc = true;
+                break;
+        }
+    }
+
+    @Override
+    public void keyReleased(KeyEvent e) {
+
+        switch (e.getKeyCode()) {
+
+            case KeyEvent.VK_W:
+            case KeyEvent.VK_UP:
+                up = false;
+                break;
+
+            case KeyEvent.VK_S:
+            case KeyEvent.VK_DOWN:
+                down = false;
+                break;
+
+            case KeyEvent.VK_A:
+            case KeyEvent.VK_LEFT:
+                left = false;
+                break;
+
+            case KeyEvent.VK_D:
+            case KeyEvent.VK_RIGHT:
+                right = false;
+                break;
+
+            case KeyEvent.VK_Z:
+                z = false;
+                break;
+
+            case KeyEvent.VK_X:
+                x = false;
+                break;
+
+            case KeyEvent.VK_ENTER:
+                enter = false;
+                break;
+
+            case KeyEvent.VK_ESCAPE:
+                esc = false;
+                break;
+        }
+    }
+
+    @Override
+    public void keyTyped(KeyEvent e) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'keyTyped'");
+    }
+
+
 }

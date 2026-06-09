@@ -17,8 +17,10 @@ public class Player {
 
     public void tick() {
 
-        x++;
-        y--;
+        if(Main.up) y--;
+        else if(Main.down) y++;
+        else if(Main.left) x--;
+        else if(Main.right) x++;
 
     }
 
