@@ -1,11 +1,19 @@
 package src;
 
 import javax.swing.*;
+
+import src.bulletTypes.*;
+
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.util.ArrayList;
 
 public class Main extends JFrame implements Runnable, KeyListener {
+
+    /* =========================
+            CONTROLS
+    ========================= */
 
 
     public static boolean up = false;
@@ -18,14 +26,26 @@ public class Main extends JFrame implements Runnable, KeyListener {
     public static boolean enter = false;
     public static boolean esc = false;
 
+    /* =========================
+            ARRAYLISTS
+    ========================= */
+
+    public static ArrayList<Bullet> bullets = new ArrayList<Bullet>();
+
+    /* =========================
+            STARTUP
+    ========================= */
+
+    public static Player player;
+    static Menu menu;
 
     /* =========================
             CONFIGURATION
        ========================= */
 
-    private static final int WIDTH = 1080;
-    private static final int HEIGHT = 720;
-    private static final int TARGET_FPS = 60;
+    public static final int WIDTH = 1080;
+    public static final int HEIGHT = 720;
+    public static final int TARGET_FPS = 60;
 
     /* =========================
             GAME STATE
@@ -58,13 +78,6 @@ public class Main extends JFrame implements Runnable, KeyListener {
         setFocusable(true);
         requestFocusInWindow();
     }
-
-    /* =========================
-             STARTUP
-       ========================= */
-
-    static Player player;
-    static Menu menu;
 
     public static void main(String[] args) {
 
@@ -150,8 +163,17 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
             player.tick();
 
+            for (Bullet bullet : bullets) {
+                bullet.tick();
+            }
+            Main.bullets.removeIf(bullet -> !bullet.isAlive());
+
         }
 
+    }
+
+    public static double getDist(double x1, double y1, double x2, double y2){
+        return Math.sqrt(Math.pow(x1-x2, 2) + Math.pow(y1-y2, 2));
     }
 
     /* =========================
@@ -188,6 +210,9 @@ public class Main extends JFrame implements Runnable, KeyListener {
             }else if(gameState.equals("Game")){
 
                 player.render(g);
+                for (Bullet bullet : bullets) {
+                    bullet.render(g);
+                }
 
             }
 
@@ -283,7 +308,6 @@ public class Main extends JFrame implements Runnable, KeyListener {
     @Override
     public void keyTyped(KeyEvent e) {
         // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'keyTyped'");
     }
 
 
