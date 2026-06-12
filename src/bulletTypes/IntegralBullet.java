@@ -4,12 +4,12 @@ import java.awt.*;
 
 import src.Main;
 
-public class LinearBullet extends Bullet{
+public class IntegralBullet extends Bullet{
     
     private double dx, dy, d2x, d2y;
     private double radius;
 
-    public LinearBullet(double x, double y, double dx, double dy, double d2x, double d2y, double radius, boolean hitPlayer){
+    public IntegralBullet(double x, double y, double dx, double dy, double d2x, double d2y, double radius, boolean hitPlayer){
         this.x = x;
         this.y = y;
         this.dx = dx;
@@ -49,7 +49,7 @@ public class LinearBullet extends Bullet{
 
         g.setColor(Color.RED);
         g.drawRect((int)x, (int)y, 0, 0);
-        g.drawOval((int)(x-radius), (int)(y-radius), (int)radius*2, (int)radius*2);
+        g.fillOval((int)(x-radius), (int)(y-radius), (int)radius*2, (int)radius*2);
 
     }
 

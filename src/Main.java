@@ -31,6 +31,7 @@ public class Main extends JFrame implements Runnable, KeyListener {
     ========================= */
 
     public static ArrayList<Bullet> bullets = new ArrayList<Bullet>();
+    public static ArrayList<Point> points = new ArrayList<Point>();
 
     /* =========================
             STARTUP
@@ -46,7 +47,7 @@ public class Main extends JFrame implements Runnable, KeyListener {
     public static final int WIDTH = 1080;
     public static final int HEIGHT = 720;
     public static final int TARGET_FPS = 60;
-
+    
     /* =========================
             GAME STATE
        ========================= */
@@ -168,12 +169,25 @@ public class Main extends JFrame implements Runnable, KeyListener {
             }
             Main.bullets.removeIf(bullet -> !bullet.isAlive());
 
+            for (Point point : points) {
+                point.tick();
+            }
+            Main.points.removeIf(bullet -> !bullet.isAlive());
+
         }
 
     }
 
     public static double getDist(double x1, double y1, double x2, double y2){
         return Math.sqrt(Math.pow(x1-x2, 2) + Math.pow(y1-y2, 2));
+    }
+
+    public static double getSin(double x1, double y1, double x2, double y2){
+        return (y1 - y2)/getDist(x1, y1, x2, y2);
+    }
+
+    public static double getCos(double x1, double y1, double x2, double y2){
+        return (x1 - x2)/getDist(x1, y1, x2, y2);
     }
 
     /* =========================
@@ -210,8 +224,13 @@ public class Main extends JFrame implements Runnable, KeyListener {
             }else if(gameState.equals("Game")){
 
                 player.render(g);
+
                 for (Bullet bullet : bullets) {
                     bullet.render(g);
+                }
+
+                for (Point point : points) {
+                    point.render(g);
                 }
 
             }
