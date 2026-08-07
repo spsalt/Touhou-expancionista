@@ -1,0 +1,12 @@
+# Saida de compilacao
+out/
+bin/
+*.class
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+.classpath
+.project
+.settings/

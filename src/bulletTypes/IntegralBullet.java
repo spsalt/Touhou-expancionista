@@ -4,12 +4,44 @@ import java.awt.*;
 
 import src.Main;
 
-public class IntegralBullet extends Bullet{
-    
-    private double dx, dy, d2x, d2y;
-    private double radius;
+/**
+ * Bala com movimento por integracao: guarda velocidade (dx, dy) e
+ * aceleracao (d2x, d2y) e integra a cada tick.
+ *
+ *   dx += d2x;   x += dx;
+ *
+ * Com isso da pra fazer quase todo padrao do jogo so escolhendo numeros:
+ *   - aceleracao 0            -> linha reta
+ *   - d2y positivo pequeno    -> bala que "cai" (gravidade)
+ *   - d2 apontando pro centro -> curva
+ * Nada de if especial por padrao: o padrao mora nos parametros.
+ */
+public class IntegralBullet extends Bullet {
 
-    public IntegralBullet(double x, double y, double dx, double dy, double d2x, double d2y, double radius, boolean hitPlayer){
+    private double dx, dy;    // velocidade
+    private double d2x, d2y;  // aceleracao
+
+    private Color cor;
+
+    /**
+     * @param x,y       posicao inicial
+     * @param dx,dy     velocidade inicial (pixels por tick)
+     * @param d2x,d2y   aceleracao (pixels por tick ao quadrado)
+     * @param radius    raio de colisao e de desenho
+     * @param hitPlayer true se e bala inimiga (machuca o jogador)
+     */
+    public IntegralBullet(double x, double y, double dx, double dy,
+                          double d2x, double d2y, double radius, boolean hitPlayer) {
+
+        this(x, y, dx, dy, d2x, d2y, radius, hitPlayer,
+             hitPlayer ? Color.RED : Color.CYAN);
+    }
+
+    /** Mesmo construtor, deixando escolher a cor da bala. */
+    public IntegralBullet(double x, double y, double dx, double dy,
+                          double d2x, double d2y, double radius, boolean hitPlayer,
+                          Color cor) {
+
         this.x = x;
         this.y = y;
         this.dx = dx;
@@ -18,40 +50,60 @@ public class IntegralBullet extends Bullet{
         this.d2y = d2y;
         this.radius = radius;
         this.hitPlayer = hitPlayer;
+        this.cor = cor;
     }
 
     @Override
-    public void tick(){
+    public void tick() {
 
+        // 1) integra a posicao e a velocidade
         x += dx;
         y += dy;
 
-        dx+=d2x;
-        dy+=d2y;
+        dx += d2x;
+        dy += d2y;
 
-        if(x < 0 || x > Main.WIDTH
-            || y < 0 || y > Main.HEIGHT
-        ){
+        // 2) morre ao sair do campo de jogo (com uma margem, senao balas que
+        //    nascem na borda sumiriam no mesmo frame em que nascem)
+        if (Main.foraDoCampo(x, y, Main.MARGEM_SAIDA_BALA)) {
             this.isAlive = false;
+            return;
         }
 
-        if(isAlive && hitPlayer){
-            if(Main.getDist(this.x, this.y, Main.player.getX(), Main.player.getY()) <= this.radius + Main.player.getRadius()){
-                this.isAlive = false;
-                System.exit(0);
+        // 3) colisao com o jogador. Quem decide o que fazer com o dano e o
+        //    Player, nao a bala: aqui so avisamos.
+        if (isAlive && hitPlayer && Main.player != null) {
+
+            double dist = Main.getDist(this.x, this.y, Main.player.getX(), Main.player.getY());
+
+            if (dist <= this.radius + Main.player.getRadius()) {
+
+                // So consome a bala se o dano foi aplicado de fato
+                // (se o jogador estiver invulneravel, a bala passa reto).
+                if (Main.player.levarDano()) {
+                    this.isAlive = false;
+                }
             }
         }
-
     }
 
     @Override
-    public void render(Graphics2D g){
+    public void render(Graphics2D g) {
 
-        g.setColor(Color.RED);
-        g.drawRect((int)x, (int)y, 0, 0);
-        g.fillOval((int)(x-radius), (int)(y-radius), (int)radius*2, (int)radius*2);
+        int d = (int) (radius * 2);
 
+        // Miolo claro + borda colorida: fica legivel mesmo com a tela cheia de bala.
+        g.setColor(cor);
+        g.fillOval((int) (x - radius), (int) (y - radius), d, d);
+
+        g.setColor(Color.WHITE);
+        g.fillOval((int) (x - radius * 0.45), (int) (y - radius * 0.45),
+                   (int) (radius * 0.9), (int) (radius * 0.9));
     }
+
+    /* =========================
+            GETTERS E SETTERS
+       ========================= */
 
     public double getDx() {
         return dx;
@@ -85,14 +137,11 @@ public class IntegralBullet extends Bullet{
         this.d2y = d2y;
     }
 
-    public double getRadius() {
-        return radius;
+    public Color getCor() {
+        return cor;
     }
 
-    public void setRadius(double radius) {
-        this.radius = radius;
+    public void setCor(Color cor) {
+        this.cor = cor;
     }
-
-    
-
 }

@@ -2,8 +2,14 @@ package src;
 
 import java.awt.*;
 
+/**
+ * Item de XP que os inimigos dropam ao morrer.
+ *
+ * Cai devagar; se o jogador chegar dentro do raio de coleta, ele passa a
+ * ser atraido e vai atras do jogador ate encostar (isCatch = true).
+ */
 public class Point {
-    
+
     private double x;
     private double y;
     private double dx = 0;
@@ -22,31 +28,43 @@ public class Point {
         y += dy;
         x += dx;
 
-        if(y > Main.HEIGHT)
+        // Saiu pelo fundo do campo: perdido.
+        if(y > Main.CAMPO_Y + Main.CAMPO_H)
             isAlive = false;
 
-        if(Main.getDist(x, y, Main.player.getX(), Main.player.getY()) < 5){
+        if(Main.player == null)
+            return;
+
+        double dist = Main.getDist(x, y, Main.player.getX(), Main.player.getY());
+
+        // Encostou: vira XP.
+        if(dist < 8){
             isAlive = false;
             Main.player.setXp(Main.player.getXp()+1);
+            return;
         }
 
-        if(Main.getDist(x, y, Main.player.getX(), Main.player.getY()) < 50){
+        // Entrou no raio de coleta: a partir daqui persegue o jogador pra sempre.
+        if(dist < Main.player.getRaioColeta()){
             isCatch = true;
         }
 
         if(isCatch){
-            dx = Main.getCos(Main.player.getX(), Main.player.getY(), x, y) * 3;
-            dy = Main.getSin(Main.player.getX(), Main.player.getY(), x, y) * 3;
+            dx = Main.getCos(Main.player.getX(), Main.player.getY(), x, y) * 5;
+            dy = Main.getSin(Main.player.getX(), Main.player.getY(), x, y) * 5;
         }
 
     }
 
     public void render(Graphics2D g){
 
-        g.setColor(Color.BLUE);
+        // Muda de cor quando esta sendo atraido, pra dar feedback da coleta.
+        g.setColor(isCatch ? Color.CYAN : new Color(80, 120, 255));
 
-        g.drawRect((int)x, (int)y, 0, 0);
-        g.drawRect((int)x-10, (int)y-10, 20, 20);
+        g.fillRect((int)x-5, (int)y-5, 10, 10);
+
+        g.setColor(Color.WHITE);
+        g.drawRect((int)x-5, (int)y-5, 10, 10);
 
     }
 
