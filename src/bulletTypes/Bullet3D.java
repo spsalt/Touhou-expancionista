@@ -57,6 +57,32 @@ public class Bullet3D extends Bullet {
 
     private final Color corBase;
 
+    /** Distancia do centro em que a bala nasceu (raio inicial da esfera). */
+    private final double distanciaInicial;
+
+    /** Distancia percorrida a partir dai em que a cor chega no violeta. */
+    private final double distanciaAteVioleta;
+
+    /**
+     * Distancia 3D maxima do centro. Passou disso, a bala morre.
+     *
+     * POR QUE ISSO E NECESSARIO: sair do campo (o teste 2D) NAO basta.
+     * Uma bala que viaja quase toda no eixo Z se afasta "pra dentro da
+     * tela" — o x/y projetado converge pro centro em vez de ir pra borda,
+     * entao ela encolhe pra sempre sem nunca sair do campo. Metade da
+     * esfera ficava viva indefinidamente e a tela ia entupindo.
+     */
+    private final double alcanceMaximo;
+
+    /** Tempo de vida em ticks. Teto duro, pra esfera limpar antes da proxima. */
+    private final int vidaMaxima;
+
+    /** Ticks finais em que a bala vai sumindo, pra nao apagar de estalo. */
+    private final int ticksDeFade;
+
+    /** Ticks de vida ja decorridos. */
+    private int t = 0;
+
     /** Escala de perspectiva do frame atual. Guardada pro render usar. */
     private double escala = 1;
 
@@ -64,7 +90,8 @@ public class Bullet3D extends Bullet {
                     double x3, double y3, double z3,
                     double vx3, double vy3, double vz3,
                     double raioBase, double distanciaCamera, double velocidadeGiro,
-                    Color corBase) {
+                    Color corBase, double distanciaAteVioleta,
+                    double alcanceMaximo, int vidaMaxima, int ticksDeFade) {
 
         this.centroX = centroX;
         this.centroY = centroY;
@@ -81,6 +108,13 @@ public class Bullet3D extends Bullet {
         this.distanciaCamera = Math.max(1, distanciaCamera);
         this.velocidadeGiro = velocidadeGiro;
         this.corBase = corBase;
+
+        this.distanciaInicial = Math.sqrt(x3 * x3 + y3 * y3 + z3 * z3);
+        this.distanciaAteVioleta = Math.max(1, distanciaAteVioleta);
+
+        this.alcanceMaximo = Math.max(1, alcanceMaximo);
+        this.vidaMaxima = Math.max(1, vidaMaxima);
+        this.ticksDeFade = Math.max(1, Math.min(ticksDeFade, this.vidaMaxima));
 
         this.hitPlayer = true;
         this.radius = raioBase;
@@ -120,21 +154,38 @@ public class Bullet3D extends Bullet {
             vz3 = novoVz;
         }
 
+        t++;
+
         // 3) passou por tras da camera: descarta (a projecao inverteria)
         if (z3 <= -distanciaCamera + 1) {
             isAlive = false;
             return;
         }
 
+        // 4) alcance esgotado: e este teste, e nao o de sair do campo, que
+        //    mata as balas que viajam pelo eixo Z (elas encolhem rumo ao
+        //    centro da tela e nunca cruzariam a borda).
+        if (Math.sqrt(x3 * x3 + y3 * y3 + z3 * z3) > alcanceMaximo) {
+            isAlive = false;
+            return;
+        }
+
+        // 5) teto de tempo: garante que a esfera limpa antes da proxima
+        //    nascer, senao elas se acumulam e a tela entope.
+        if (t >= vidaMaxima) {
+            isAlive = false;
+            return;
+        }
+
         projetar();
 
-        // 4) saiu do campo de jogo
+        // 6) saiu do campo de jogo
         if (Main.foraDoCampo(x, y, Main.MARGEM_SAIDA_BALA)) {
             isAlive = false;
             return;
         }
 
-        // 5) colisao com o jogador, usando o raio JA escalado
+        // 7) colisao com o jogador, usando o raio JA escalado
         if (isAlive && hitPlayer && Main.player != null) {
 
             double dist = Main.getDist(x, y, Main.player.getX(), Main.player.getY());
@@ -169,11 +220,23 @@ public class Bullet3D extends Bullet {
         // esfera em vez de um monte de bolinha solta na tela.
         double brilho = Math.max(0.35, Math.min(1.4, escala));
 
+        Color base = corPorExpansao();
+
         Color cor = new Color(
-            limitar((int) (corBase.getRed()   * brilho)),
-            limitar((int) (corBase.getGreen() * brilho)),
-            limitar((int) (corBase.getBlue()  * brilho))
+            limitar((int) (base.getRed()   * brilho)),
+            limitar((int) (base.getGreen() * brilho)),
+            limitar((int) (base.getBlue()  * brilho))
         );
+
+        // Nos ultimos ticks de vida a bala vai sumindo, em vez de apagar de
+        // estalo. Alem de ficar melhor, avisa o jogador que aquela area vai
+        // liberar — sumico instantaneo confunde a leitura da tela.
+        double opacidade = opacidadePorTempo();
+
+        if (opacidade < 1.0) {
+            cor = new Color(cor.getRed(), cor.getGreen(), cor.getBlue(),
+                            limitar((int) (255 * opacidade)));
+        }
 
         g.setColor(cor);
         g.fillOval((int) (x - radius), (int) (y - radius), d, d);
@@ -181,10 +244,46 @@ public class Bullet3D extends Bullet {
         // Miolo claro so nas balas da frente: nas de tras ele viraria
         // ruido branco e atrapalharia a leitura de profundidade.
         if (escala > 0.9) {
-            g.setColor(Color.WHITE);
+            g.setColor(new Color(255, 255, 255, limitar((int) (255 * opacidade))));
             g.fillOval((int) (x - radius * 0.45), (int) (y - radius * 0.45),
                        (int) (radius * 0.9), (int) (radius * 0.9));
         }
+    }
+
+    /** 1.0 na maior parte da vida; cai ate 0 nos ultimos 'ticksDeFade'. */
+    private double opacidadePorTempo() {
+
+        int inicioDoFade = vidaMaxima - ticksDeFade;
+
+        if (t < inicioDoFade) {
+            return 1.0;
+        }
+
+        return Math.max(0, 1.0 - (t - inicioDoFade) / (double) ticksDeFade);
+    }
+
+    /**
+     * Cor em funcao de QUANTO a bala ja se afastou do ponto onde nasceu:
+     * vai da cor base (vermelho) ate o violeta.
+     *
+     * Serve de leitura de perigo — bala recem-nascida ainda esta perto do
+     * chefe, bala violeta ja e a que esta chegando no jogador. E medido em
+     * distancia 3D real, nao em tempo, entao vale mesmo com a esfera
+     * girando ou com raios iniciais diferentes.
+     */
+    private Color corPorExpansao() {
+
+        double distancia = Math.sqrt(x3 * x3 + y3 * y3 + z3 * z3) - distanciaInicial;
+
+        double f = Math.max(0, Math.min(1, distancia / distanciaAteVioleta));
+
+        final int VIOLETA_R = 170, VIOLETA_G = 60, VIOLETA_B = 255;
+
+        return new Color(
+            limitar((int) (corBase.getRed()   + (VIOLETA_R - corBase.getRed())   * f)),
+            limitar((int) (corBase.getGreen() + (VIOLETA_G - corBase.getGreen()) * f)),
+            limitar((int) (corBase.getBlue()  + (VIOLETA_B - corBase.getBlue())  * f))
+        );
     }
 
     private static int limitar(int v) {

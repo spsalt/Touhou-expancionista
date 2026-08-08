@@ -53,7 +53,12 @@ public class GptExpansion {
         this.x = x;
         this.y = y;
 
-        this.raioMaximo       = Config.getDouble("gptExpansao.raioMaximo", 260.0);
+        // O alcance cresce com o nivel do jogador: quem investiu em subir de
+        // nivel ve a recompensa tambem na bomba, nao so no leque de tiro.
+        int nivel = (Main.player != null) ? Main.player.getLevel() : 1;
+        double bonus = 1 + (nivel - 1) * Config.getDouble("gptExpansao.bonusPorNivel", 0.18);
+
+        this.raioMaximo       = Config.getDouble("gptExpansao.raioMaximo", 260.0) * bonus;
         this.ticksExpansao    = Math.max(1, Config.getInt("gptExpansao.ticksExpansao", 26));
         this.ticksSustentacao = Config.getInt("gptExpansao.ticksSustentacao", 12);
         this.ticksFade        = Math.max(1, Config.getInt("gptExpansao.ticksFade", 18));

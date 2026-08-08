@@ -4,6 +4,7 @@ import java.awt.Color;
 
 import src.Config;
 import src.Main;
+import src.Som;
 import src.bulletTypes.IntegralBullet;
 import src.enemyTypes.BossEnemy;
 
@@ -41,6 +42,13 @@ public class IntegralSpell extends SpellCard {
     /** Conta quantos simbolos ja sairam, pra variar o angulo entre eles. */
     private int disparos = 0;
 
+    /** Padroes de espalhamento, ciclados a cada disparo. */
+    private static final IntegralBullet.PadraoEspalhamento[] PADROES = {
+        IntegralBullet.PadraoEspalhamento.LEQUE,
+        IntegralBullet.PadraoEspalhamento.ESPIRAL,
+        IntegralBullet.PadraoEspalhamento.DIVERGENTE
+    };
+
     public IntegralSpell() {
 
         super("∫  Integral Indefinida",
@@ -66,6 +74,8 @@ public class IntegralSpell extends SpellCard {
         if (t % cadencia != 0) {
             return;
         }
+
+        Som.tocar(Som.TIRO_INIMIGO);
 
         // Gira o simbolo um pouco a cada disparo (angulo aureo-ish: nunca
         // repete a mesma inclinacao em disparos proximos).
@@ -103,7 +113,7 @@ public class IntegralSpell extends SpellCard {
             // um simbolo unico em vez de balas soltas.
             int verde = 90 + (int) (120 * s);
 
-            Main.bullets.add(new IntegralBullet(
+            IntegralBullet bala = new IntegralBullet(
                 chefe.getX() + rx,
                 chefe.getY() + ry,
                 dirX * velocidade,
@@ -112,7 +122,20 @@ public class IntegralSpell extends SpellCard {
                 raioBala,
                 true,
                 new Color(230, verde, 60)
-            ));
+            );
+
+            // Depois de viajar um tempo mantendo a forma do simbolo, a
+            // integral se desfaz. O padrao cicla a cada disparo, entao duas
+            // ondas seguidas nunca pedem o mesmo desvio.
+            bala.configurarEspalhamento(
+                Config.getInt("adriana.integral.ticksAteEspalhar", 70),
+                PADROES[disparos % PADROES.length],
+                i, balasPorSimbolo,
+                Config.getDouble("adriana.integral.aberturaEspalhamento", 0.9),
+                Config.getDouble("adriana.integral.ganhoVelocidade", 1.15)
+            );
+
+            Main.bullets.add(bala);
         }
 
         disparos++;

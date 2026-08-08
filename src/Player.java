@@ -9,7 +9,7 @@ import src.bulletTypes.IntegralBullet;
 /**
  * O estudante expancionista.
  *
- * Controles: WASD/setas move, Z atira, X segura pra entrar em modo foco
+ * Controles: WASD/setas move, Z atira, X ou SHIFT segura pra modo foco
  * (anda devagar, tiro fecha o leque, e a hitbox fica visivel).
  *
  * Todos os numeros de jogabilidade sao lidos do game.properties em
@@ -47,6 +47,9 @@ public class Player {
 
     /** Estado do V no tick anterior, pra detectar o momento do aperto. */
     private boolean vAnterior = false;
+
+    /** Estado do foco no tick anterior, pro som tocar so ao entrar. */
+    private boolean focoAnterior = false;
 
     /** Abertura atual do leque de tiro, em radianos. */
     private double shootRad;
@@ -135,7 +138,14 @@ public class Player {
 
     public void tick() {
 
-        // --- modo foco (X segurado) ---
+        // --- modo foco (X ou SHIFT segurado) ---
+        // Borda de subida: o som toca no instante em que entra no foco,
+        // senao dispararia 60x por segundo enquanto a tecla ficasse presa.
+        if (Main.x && !focoAnterior) {
+            Som.tocar(Som.FOCO);
+        }
+        focoAnterior = Main.x;
+
         if (Main.x) {
             speed = velocidadeFoco;
             shootRad = aberturaFoco;
@@ -206,6 +216,7 @@ public class Player {
         }
 
         bombas--;
+        Som.tocar(Som.GPT_EXPANSION);
         Main.efeitosGpt.add(new GptExpansion(x, y));
     }
 
@@ -221,6 +232,7 @@ public class Player {
         while (level < nivelMaximo && xp >= getXpParaProximoNivel()) {
             xp -= getXpParaProximoNivel();
             level++;
+            Som.tocar(Som.SUBIR_NIVEL);
         }
 
         // No teto o XP nao serve mais pra nada, entao vira pontuacao:
@@ -237,6 +249,8 @@ public class Player {
      * do angulo shootRad, distribuidas por igual.
      */
     private void atirar() {
+
+        Som.tocar(Som.TIRO_JOGADOR);
 
         for (int i = 0; i < level; i++) {
 
@@ -317,9 +331,18 @@ public class Player {
      */
     public boolean levarDano() {
 
+        // Vidas infinitas no modo debug: a bala atravessa sem tirar vida
+        // nem gastar invulnerabilidade, pra dar pra testar um padrao de
+        // chefe do inicio ao fim sem morrer no meio.
+        if (Main.debugMode) {
+            return false;
+        }
+
         if (invulneravel > 0) {
             return false;
         }
+
+        Som.tocar(Som.JOGADOR_DANO);
 
         vidas--;
         invulneravel = invulnerabilidadeTicks;
@@ -336,6 +359,7 @@ public class Player {
         }
 
         if (vidas <= 0) {
+            Som.tocar(Som.GAME_OVER);
             Main.gameState = "GameOver";
         }
 

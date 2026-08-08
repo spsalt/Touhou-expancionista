@@ -9,6 +9,7 @@ import src.Assets;
 import src.Config;
 import src.Main;
 import src.Point;
+import src.Som;
 import src.enemyTypes.spellCards.SpellCard;
 
 /**
@@ -86,6 +87,7 @@ public class BossEnemy extends Enemy {
         if (spellCards.length > 0) {
             anuncio = ticksAnuncio;
             spellCards[0].iniciar(this);
+            Som.tocar(Som.SPELL_INICIA);
         }
     }
 
@@ -192,6 +194,8 @@ public class BossEnemy extends Enemy {
      */
     private void proximoSpellCard() {
 
+        Som.tocar(Som.SPELL_QUEBRA);
+
         limparBalasInimigas();
         soltarItens(Config.getInt("chefe.itensPorSpellCard", 8));
 
@@ -210,12 +214,15 @@ public class BossEnemy extends Enemy {
         anuncio = ticksAnuncio;
 
         spellCards[spellAtual].iniciar(this);
+        Som.tocar(Som.SPELL_INICIA);
     }
 
     @Override
     protected void morrer() {
 
         isAlive = false;
+
+        Som.tocar(Som.CHEFE_MORRE);
 
         limparBalasInimigas();
 
@@ -286,7 +293,7 @@ public class BossEnemy extends Enemy {
 
         g.drawImage(img, (int) (x - larg / 2.0), (int) (y - alt / 2.0), larg, alt, null);
 
-        if (Config.getBool("debug.mostrarHitboxInimigo", true)) {
+        if (Main.debugMode) {
             g.setColor(Color.YELLOW);
             g.drawOval((int) (x - radius), (int) (y - radius), (int) (radius * 2), (int) (radius * 2));
         }
@@ -367,6 +374,11 @@ public class BossEnemy extends Enemy {
     /* =========================
             GETTERS E SETTERS
        ========================= */
+
+    /** O spell card ativo, ou null se o chefe ja terminou todos. */
+    public SpellCard getSpellCardAtual() {
+        return temSpellAtivo() ? spellCards[spellAtual] : null;
+    }
 
     public int getSpellAtual() {
         return spellAtual;

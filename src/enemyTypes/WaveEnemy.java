@@ -3,6 +3,7 @@ package src.enemyTypes;
 import java.awt.Color;
 
 import src.Config;
+import src.Som;
 
 /**
  * Base dos inimigos que aparecem em onda.
@@ -42,7 +43,7 @@ public abstract class WaveEnemy extends Enemy {
         this.pontos = Config.getInt("inimigo.pontosAoMorrer", 100);
         this.itens  = Config.getInt("inimigo.itensAoMorrer", 3);
 
-        this.sprite       = "sprites/enemies/tabmaligno.png";
+        this.sprite       = Config.getString("inimigo.sprite", "sprites/enemies/inimigo.png");
         this.escalaSprite = Config.getDouble("inimigo.escalaSprite", 2.2);
     }
 
@@ -68,6 +69,7 @@ public abstract class WaveEnemy extends Enemy {
             return;
         }
 
+        Som.tocar(Som.TIRO_INIMIGO);
         atirarMirado(velocidadeBala, raioBala, corBala);
     }
 

@@ -28,6 +28,7 @@ public class Menu {
         if (Main.up) {
 
             Main.up = false;
+            Som.tocar(Som.MENU_MOVER);
             selected--;
 
             if (selected < 0) {
@@ -37,6 +38,7 @@ public class Menu {
         } else if (Main.down) {
 
             Main.down = false;
+            Som.tocar(Som.MENU_MOVER);
             selected++;
 
             if (selected > options.length - 1) {
@@ -46,6 +48,7 @@ public class Menu {
         } else if (Main.enter) {
 
             Main.enter = false;
+            Som.tocar(Som.MENU_OK);
             confirmar();
         }
     }
@@ -80,6 +83,16 @@ public class Menu {
     public void render(Graphics2D g) {
 
         int centroX = Main.WIDTH / 2;
+
+        // Foto da portaria 1 como pano de fundo do menu.
+        BufferedImage fundo = Assets.get("sprites/ambient/portaria1.png");
+
+        if (fundo != null) {
+            g.drawImage(fundo, 0, 0, Main.WIDTH, Main.HEIGHT, null);
+            // Escurece: sem isso o titulo e as opcoes somem no ceu claro.
+            g.setColor(new Color(0, 0, 0, Config.getInt("menu.escurecimentoFundo", 150)));
+            g.fillRect(0, 0, Main.WIDTH, Main.HEIGHT);
+        }
 
         // Simbolo do menu, se o PNG existir.
         BufferedImage simbolo = Assets.get("simbolo_menu.png");

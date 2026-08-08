@@ -85,9 +85,24 @@ public class Background {
      * Reescalar aqui (e nao no render) e o que segura o FPS: escalar uma
      * imagem grande 60 vezes por segundo derruba o jogo.
      */
+    /**
+     * Troca o cenario em tempo de execucao (usado quando comeca a luta de
+     * chefe, pra o fundo virar a sala 7). Passar null volta pro padrao.
+     */
+    public void trocarImagem(String caminho) {
+        this.caminhoForcado = caminho;
+        carregarImagem();
+        offset = 0;
+    }
+
+    /** Cenario pedido em runtime. null = usa o do game.properties. */
+    private String caminhoForcado = null;
+
     private void carregarImagem() {
 
-        String caminho = Config.getString("fundo.imagem", "sprites/ambient/dco.png");
+        String caminho = (caminhoForcado != null)
+                       ? caminhoForcado
+                       : Config.getString("fundo.imagem", "sprites/ambient/dco.png");
 
         BufferedImage original = Assets.get(caminho);
 

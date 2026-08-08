@@ -23,6 +23,46 @@ public class IntegralBullet extends Bullet {
 
     private Color cor;
 
+    /* --- espalhamento (scatter) --- */
+
+    /**
+     * Como o grupo de balas se abre quando o simbolo se desfaz.
+     *
+     * Os tres sao DETERMINISTICOS: a direcao sai do indice da bala dentro
+     * do grupo, nao de sorteio. Isso importa — com angulo aleatorio por
+     * bala o resultado vira ruido, o jogador nao consegue prever nada e o
+     * desvio vira sorte. Com padrao, ele le a abertura e escolhe a brecha.
+     */
+    public enum PadraoEspalhamento {
+        /** Leque simetrico: as balas se abrem em arco, do -abertura ao +abertura. */
+        LEQUE,
+        /** Catavento: todas giram progressivamente pro mesmo lado. */
+        ESPIRAL,
+        /** Duas correntes: pares pra um lado, impares pro outro. */
+        DIVERGENTE
+    }
+
+    /** Ticks de vida desta bala. */
+    private int t = 0;
+
+    /** Quando espalhar. <= 0 desliga o efeito. */
+    private int ticksAteEspalhar = 0;
+
+    /** Ja espalhou? Garante que acontece uma vez so. */
+    private boolean jaEspalhou = false;
+
+    private PadraoEspalhamento padrao = PadraoEspalhamento.LEQUE;
+
+    /** Posicao desta bala dentro do grupo, e o tamanho do grupo. */
+    private int indiceNoGrupo = 0;
+    private int tamanhoDoGrupo = 1;
+
+    /** Abertura total do padrao, em radianos. */
+    private double aberturaEspalhamento = 0.9;
+
+    /** Multiplicador de velocidade no momento do espalhamento. */
+    private double ganhoDeVelocidade = 1.15;
+
     /**
      * @param x,y       posicao inicial
      * @param dx,dy     velocidade inicial (pixels por tick)
@@ -53,8 +93,40 @@ public class IntegralBullet extends Bullet {
         this.cor = cor;
     }
 
+    /**
+     * Liga o espalhamento: depois de 'ticks', a bala vira e acelera
+     * seguindo um padrao definido pela sua posicao no grupo.
+     *
+     * Serve pros ataques que desenham um SIMBOLO com balas (a integral, o
+     * somatorio): o jogador ve a forma se montar e depois ela se desfaz.
+     *
+     * @param ticks    quantos ticks ate espalhar (<= 0 desliga)
+     * @param padrao   forma da abertura (ver PadraoEspalhamento)
+     * @param indice   posicao desta bala no grupo (0 .. total-1)
+     * @param total    quantas balas tem o grupo
+     * @param abertura abertura total do padrao, em radianos
+     * @param ganho    multiplicador de velocidade ao espalhar
+     */
+    public void configurarEspalhamento(int ticks, PadraoEspalhamento padrao,
+                                       int indice, int total,
+                                       double abertura, double ganho) {
+        this.ticksAteEspalhar = ticks;
+        this.padrao = padrao;
+        this.indiceNoGrupo = indice;
+        this.tamanhoDoGrupo = Math.max(1, total);
+        this.aberturaEspalhamento = abertura;
+        this.ganhoDeVelocidade = ganho;
+    }
+
     @Override
     public void tick() {
+
+        // 0) hora de espalhar?
+        if (!jaEspalhou && ticksAteEspalhar > 0 && t >= ticksAteEspalhar) {
+            espalhar();
+        }
+
+        t++;
 
         // 1) integra a posicao e a velocidade
         x += dx;
@@ -84,6 +156,69 @@ public class IntegralBullet extends Bullet {
                     this.isAlive = false;
                 }
             }
+        }
+    }
+
+    /**
+     * Gira a velocidade atual num angulo aleatorio e acelera.
+     *
+     * Trabalha em coordenadas POLARES (angulo + modulo) e nao mexendo em
+     * dx/dy direto: assim a bala mantem o sentido geral pra onde ja ia,
+     * so abrindo em leque. Sortear dx e dy soltos mandaria bala pra tras.
+     */
+    private void espalhar() {
+
+        jaEspalhou = true;
+
+        double velocidade = Math.sqrt(dx * dx + dy * dy);
+
+        if (velocidade < 0.01) {
+            return;
+        }
+
+        double angulo = Math.atan2(dy, dx) + desvioDoPadrao();
+
+        velocidade *= ganhoDeVelocidade;
+
+        dx = Math.cos(angulo) * velocidade;
+        dy = Math.sin(angulo) * velocidade;
+
+        // Zera a aceleracao: ela vinha do desenho do simbolo e depois do
+        // espalhamento so atrapalharia a leitura da nova direcao.
+        d2x = 0;
+        d2y = 0;
+    }
+
+    /**
+     * Quanto esta bala desvia da direcao atual, conforme o padrao.
+     *
+     * 'f' e a posicao normalizada no grupo (0 na primeira bala, 1 na
+     * ultima). Todo padrao e uma funcao de f — nada de sorteio, entao o
+     * resultado e sempre o mesmo e o jogador consegue aprender.
+     */
+    private double desvioDoPadrao() {
+
+        double f = (tamanhoDoGrupo <= 1) ? 0.5 : indiceNoGrupo / (double) (tamanhoDoGrupo - 1);
+
+        switch (padrao) {
+
+            case LEQUE:
+                // -abertura/2 na primeira bala, +abertura/2 na ultima:
+                // o grupo abre num arco simetrico.
+                return -aberturaEspalhamento / 2 + aberturaEspalhamento * f;
+
+            case ESPIRAL:
+                // Todas viram pro mesmo lado, cada vez mais: vira catavento.
+                return aberturaEspalhamento * f;
+
+            case DIVERGENTE:
+                // Pares pra um lado, impares pro outro: o grupo racha em
+                // duas correntes e abre um corredor no meio.
+                return (indiceNoGrupo % 2 == 0) ? aberturaEspalhamento / 2
+                                                : -aberturaEspalhamento / 2;
+
+            default:
+                return 0;
         }
     }
 

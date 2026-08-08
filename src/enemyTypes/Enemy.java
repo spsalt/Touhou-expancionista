@@ -7,6 +7,7 @@ import src.Assets;
 import src.Config;
 import src.Main;
 import src.Point;
+import src.Som;
 import src.bulletTypes.IntegralBullet;
 
 /**
@@ -108,7 +109,7 @@ public class Enemy {
         }
 
         // Hitbox de debug: mostra exatamente onde as balas do jogador acertam.
-        if (Config.getBool("debug.mostrarHitboxInimigo", true)) {
+        if (Main.debugMode) {
             g.setColor(Color.YELLOW);
             g.drawOval((int) (x - radius), (int) (y - radius), (int) (radius * 2), (int) (radius * 2));
         }
@@ -157,6 +158,7 @@ public class Enemy {
     protected void morrer() {
 
         isAlive = false;
+        Som.tocar(Som.INIMIGO_MORRE);
 
         if (Main.player == null) {
             return;

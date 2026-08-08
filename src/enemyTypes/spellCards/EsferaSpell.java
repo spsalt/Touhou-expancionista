@@ -4,6 +4,7 @@ import java.awt.Color;
 
 import src.Config;
 import src.Main;
+import src.Som;
 import src.bulletTypes.Bullet3D;
 import src.enemyTypes.BossEnemy;
 
@@ -50,6 +51,18 @@ public class EsferaSpell extends SpellCard {
     private final double distanciaCamera;
     private final double velocidadeGiro;
 
+    /** Quantas esferas saem por ciclo e de quantos em quantos ticks. */
+    private final int esferasPorCiclo;
+    private final int intervaloEntreEsferas;
+
+    /** Distancia percorrida em que a bala termina de virar violeta. */
+    private final double distanciaAteVioleta;
+
+    /** Limites de vida das balas: alcance 3D, tempo e duracao do fade. */
+    private final double alcanceMaximo;
+    private final int vidaMaxima;
+    private final int ticksDeFade;
+
     private int disparos = 0;
 
     public EsferaSpell() {
@@ -59,12 +72,20 @@ public class EsferaSpell extends SpellCard {
               Config.getInt("adriana.esfera.duracao", 2000));
 
         this.cadencia           = Math.max(1, Config.getInt("adriana.esfera.cadencia", 150));
-        this.balasPorEsfera     = Math.max(8, Config.getInt("adriana.esfera.balas", 90));
+        this.balasPorEsfera     = Math.max(8, Config.getInt("adriana.esfera.balas", 55));
         this.raioInicial        = Config.getDouble("adriana.esfera.raioInicial", 30);
-        this.velocidadeExpansao = Config.getDouble("adriana.esfera.velocidadeExpansao", 1.5);
+        this.velocidadeExpansao = Config.getDouble("adriana.esfera.velocidadeExpansao", 0.95);
         this.raioBala           = Config.getDouble("adriana.esfera.raioBala", 6.0);
         this.distanciaCamera    = Config.getDouble("adriana.esfera.distanciaCamera", 240);
         this.velocidadeGiro     = Config.getDouble("adriana.esfera.velocidadeGiro", 0.018);
+
+        this.esferasPorCiclo       = Math.max(1, Config.getInt("adriana.esfera.esferasPorCiclo", 1));
+        this.intervaloEntreEsferas = Math.max(1, Config.getInt("adriana.esfera.intervaloEntreEsferas", 22));
+        this.distanciaAteVioleta   = Config.getDouble("adriana.esfera.distanciaAteVioleta", 260);
+
+        this.alcanceMaximo = Config.getDouble("adriana.esfera.alcanceMaximo", 420);
+        this.vidaMaxima    = Config.getInt("adriana.esfera.vidaMaximaTicks", 220);
+        this.ticksDeFade   = Config.getInt("adriana.esfera.ticksDeFade", 45);
     }
 
     @Override
@@ -75,9 +96,18 @@ public class EsferaSpell extends SpellCard {
     @Override
     public void atacar(int t, BossEnemy chefe) {
 
-        if (t % cadencia != 0) {
+        // Quantas esferas saem por ciclo vem da config. Com 1 (padrao) sai
+        // uma casca por vez; subindo o valor elas saem espacadas no tempo e,
+        // como todas expandem na mesma velocidade, viram cascas concentricas
+        // crescendo juntas com corredores entre elas.
+        int noCiclo = t % cadencia;
+
+        if (noCiclo % intervaloEntreEsferas != 0
+                || noCiclo >= intervaloEntreEsferas * esferasPorCiclo) {
             return;
         }
+
+        Som.tocar(Som.TIRO_INIMIGO);
 
         // Alterna o sentido do giro a cada esfera, pra o jogador nao
         // decorar um unico caminho de fuga.
@@ -107,7 +137,9 @@ public class EsferaSpell extends SpellCard {
                 raioBala,
                 distanciaCamera,
                 giro,
-                new Color(255, 90, 120)
+                new Color(255, 50, 60),      // nasce vermelha...
+                distanciaAteVioleta,         // ...e vai pro violeta ao se afastar
+                alcanceMaximo, vidaMaxima, ticksDeFade
             ));
         }
 

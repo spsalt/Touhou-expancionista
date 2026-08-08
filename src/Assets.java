@@ -33,7 +33,7 @@ public final class Assets {
     /**
      * Devolve a imagem do caminho pedido, carregando do disco na primeira vez.
      *
-     * @param caminho caminho relativo a raiz do projeto, ex "sprites/enemies/tabmaligno.png"
+     * @param caminho caminho relativo a raiz do projeto, ex "sprites/enemies/inimigo.png"
      * @return a imagem, ou null se nao foi possivel carregar
      */
     public static BufferedImage get(String caminho) {

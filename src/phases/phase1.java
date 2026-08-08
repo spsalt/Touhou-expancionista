@@ -10,6 +10,7 @@ import src.Cutscene;
 import src.Main;
 import src.enemyTypes.Adriana;
 import src.enemyTypes.ArcEnemy;
+import src.enemyTypes.Clayton;
 import src.enemyTypes.HorizontalEnemy;
 import src.enemyTypes.PendulumEnemy;
 
@@ -339,6 +340,8 @@ public class phase1 {
 
         if (!chefeSpawnado) {
             chefeSpawnado = true;
+            // A luta acontece na frente da sala 7 — o fundo acompanha.
+            Main.fundo.trocarImagem("sprites/ambient/sala7.png");
             Main.enemies.add(Adriana.criarFormaBase());
             return;
         }
@@ -364,6 +367,7 @@ public class phase1 {
 
         if (!chefeSpawnado) {
             chefeSpawnado = true;
+            Main.fundo.trocarImagem("sprites/ambient/sala7.png");
             Main.enemies.add(Adriana.criarFormaMaligna());
             return;
         }
@@ -377,27 +381,74 @@ public class phase1 {
                 return;
             }
 
+            // Arco da Adriana fechado: o cenario volta ao caminho do DCO.
+            Main.fundo.trocarImagem(null);
+
             proximoEstagio();
         }
     }
 
     /* =====================================================
-       ESTAGIOS 4 e 5 - CLAYTON (ver Roteiro.txt linhas 42 a 56)
+       ESTAGIOS 4 e 5 - CLAYTON (Roteiro.txt linhas 41 a 57)
        =====================================================
-       A FAZER. O modelo esta pronto nos estagios 2 e 3 acima: crie a
-       classe do chefe em src/enemyTypes/ (herdando de BossEnemy), monte
-       os spell cards em src/enemyTypes/spellCards/, escreva a cutscene em
-       Cutscene.java e repita os tres passos.
+       Mesma estrutura de tres passos dos estagios da Adriana.
     */
 
-    /** "VOCE JA OUVIU FALAR EM LATEX?" Sprite: clayton-base.png */
+    private boolean cutsceneClaytonMostrada = false;
+    private boolean cutsceneClaytonTransfMostrada = false;
+    private boolean cutsceneClaytonDerrotaMostrada = false;
+
+    /**
+     * ESTAGIO 4 — Clayton, forma base (Roteiro.txt linhas 41 a 46).
+     * Xadrez e claytonlings.
+     */
     private void stage4() {
-        proximoEstagio();
+
+        if (!cutsceneClaytonMostrada) {
+            cutsceneClaytonMostrada = true;
+            Main.mostrarCutscene(Cutscene.criarEncontroClayton());
+            return;
+        }
+
+        if (!chefeSpawnado) {
+            chefeSpawnado = true;
+            Main.enemies.add(Clayton.criarFormaBase());
+            return;
+        }
+
+        if (time > 10 && Main.enemies.isEmpty()) {
+            proximoEstagio();
+        }
     }
 
-    /** Clayton Tab maligno. Sprite: clayton-tabmaligno.png */
+    /**
+     * ESTAGIO 5 — Clayton Tab maligno (Roteiro.txt linhas 48 a 57).
+     * O ataque final do LaTeX.
+     */
     private void stage5() {
-        proximoEstagio();
+
+        if (!cutsceneClaytonTransfMostrada) {
+            cutsceneClaytonTransfMostrada = true;
+            Main.mostrarCutscene(Cutscene.criarTransformacaoClayton());
+            return;
+        }
+
+        if (!chefeSpawnado) {
+            chefeSpawnado = true;
+            Main.enemies.add(Clayton.criarFormaMaligna());
+            return;
+        }
+
+        if (time > 10 && Main.enemies.isEmpty()) {
+
+            if (!cutsceneClaytonDerrotaMostrada) {
+                cutsceneClaytonDerrotaMostrada = true;
+                Main.mostrarCutscene(Cutscene.criarDerrotaClayton());
+                return;
+            }
+
+            proximoEstagio();
+        }
     }
 
     /* =====================================================
@@ -420,7 +471,7 @@ public class phase1 {
         }
 
         // Ajuda de tuning: mostra qual onda e qual padrao esta rolando.
-        if (Config.getBool("debug.mostrarInfoDaOnda", true)) {
+        if (Main.debugMode) {
 
             g.setFont(new Font("Monospaced", Font.PLAIN, 12));
             g.setColor(new Color(200, 200, 120));

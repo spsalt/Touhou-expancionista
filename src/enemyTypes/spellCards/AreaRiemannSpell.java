@@ -4,6 +4,7 @@ import java.awt.Color;
 
 import src.Config;
 import src.Main;
+import src.Som;
 import src.bulletTypes.IntegralBullet;
 import src.enemyTypes.BossEnemy;
 
@@ -69,6 +70,8 @@ public class AreaRiemannSpell extends SpellCard {
         if (t % cadencia != 0) {
             return;
         }
+
+        Som.tocar(Som.TIRO_INIMIGO);
 
         // Desloca qual coluna e a falha a cada disparo, senao o jogador
         // ficaria parado no mesmo corredor a onda inteira.

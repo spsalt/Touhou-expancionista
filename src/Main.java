@@ -64,7 +64,9 @@ public class Main extends JFrame implements Runnable, KeyListener {
     static Menu menu;
     static Hud hud;
     static phase1 fase;
-    static Background fundo;
+    /** Publico porque as fases trocam o cenario (ver phase1: a luta da
+     *  Adriana acontece na sala 7). Mesma visibilidade de player/bullets. */
+    public static Background fundo;
     /** A cutscene sendo exibida agora (null fora do estado "Cutscene"). */
     static Cutscene cutsceneAtual;
 
@@ -99,10 +101,21 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
     public static String gameState = "Menu";
 
+    /**
+     * MODO DEBUG (tecla F3): chave-mestra de todas as ajudas de
+     * desenvolvimento — FPS, hitbox dos inimigos, info da onda, painel de
+     * estado e o pulo de estagio (F2).
+     *
+     * Comeca no valor de debug.modoDebug, mas da pra ligar/desligar em
+     * jogo, entao nao precisa reiniciar pra apresentar.
+     */
+    public static boolean debugMode = Config.getBool("debug.modoDebug", false);
+
     /** Trava pra ESC nao alternar pause 60x por segundo enquanto segurado. */
     private boolean escAnterior = false;
     private boolean f5Anterior = false;
     private boolean f2Anterior = false;
+    private boolean f3Anterior = false;
 
     /** FPS medido, mostrado no HUD quando debug.mostrarFps=true. */
     private static int fpsAtual = 0;
@@ -258,6 +271,7 @@ public class Main extends JFrame implements Runnable, KeyListener {
             // fase, que nao podem reiniciar a musica.
             if (cutsceneAtual.acabou()) {
                 gameState = "Game";
+                Som.tocar(Som.PAUSA);
                 musica.continuar();
             }
 
@@ -397,6 +411,7 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
             if (gameState.equals("Game")) {
                 gameState = "Pause";
+                Som.tocar(Som.PAUSA);
                 musica.pausar();
             } else if (gameState.equals("Pause")) {
                 gameState = "Game";
@@ -410,11 +425,16 @@ public class Main extends JFrame implements Runnable, KeyListener {
         }
         f5Anterior = f5;
 
-        // DEBUG: F2 pula pro proximo estagio. Util pra chegar num chefe
-        // sem jogar a fase toda enquanto testa.
-        if (f2 && !f2Anterior && gameState.equals("Game")
-                && Config.getBool("debug.permitirPularEstagio", true)) {
+        // F3 liga/desliga o modo debug.
+        if (f3 && !f3Anterior) {
+            debugMode = !debugMode;
+            System.out.println("[Main] Modo debug: " + (debugMode ? "ON" : "OFF"));
+        }
+        f3Anterior = f3;
 
+        // F2 pula pro proximo estagio. So no modo debug, pra ninguem pular
+        // a fase sem querer durante a apresentacao.
+        if (f2 && !f2Anterior && debugMode && gameState.equals("Game")) {
             fase.pularEstagio();
             System.out.println("[Main] Estagio pulado (F2).");
         }
@@ -445,6 +465,8 @@ public class Main extends JFrame implements Runnable, KeyListener {
         if (cutsceneAtual != null) {
             cutsceneAtual.carregarConfig();
         }
+
+        Som.carregarConfig();
 
         if (musica != null) {
             // Reabrir o clip corta a musica que estava tocando. Se a partida
@@ -563,9 +585,18 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
             if (gameState.equals("Cutscene") && cutsceneAtual != null) {
 
-                // Cena ocupa a JANELA INTEIRA (nao so o campo de jogo):
-                // e o que da o clima de tela cheia, tipo cinema.
+                // HUD PRIMEIRO: a cena acontece dentro do campo de jogo, e
+                // o painel lateral (pontos, vidas, GPT, controles) continua
+                // visivel durante o dialogo.
+                hud.render(g);
+
+                // A cena e recortada no campo, entao nada dela vaza pro HUD.
+                Shape recorte = g.getClip();
+                g.setClip(CAMPO_X, CAMPO_Y, CAMPO_W, CAMPO_H);
+
                 cutsceneAtual.render(g);
+
+                g.setClip(recorte);
                 return;
             }
 
@@ -621,7 +652,7 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
             g.setClip(recorteAnterior);
 
-            if (Config.getBool("debug.mostrarFps", true)) {
+            if (debugMode) {
                 g.setFont(new Font("Monospaced", Font.PLAIN, 12));
                 g.setColor(new Color(120, 255, 120));
                 g.drawString("FPS " + fpsAtual
@@ -657,6 +688,7 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
     public static boolean f5 = false;
     public static boolean f2 = false;
+    public static boolean f3 = false;
 
     @Override
     public void keyPressed(KeyEvent e) {
@@ -700,7 +732,10 @@ public class Main extends JFrame implements Runnable, KeyListener {
                 z = valor;
                 break;
 
+            // SHIFT tambem entra em modo foco: e a tecla padrao da serie,
+            // entao quem ja jogou Touhou tenta ela por instinto.
             case KeyEvent.VK_X:
+            case KeyEvent.VK_SHIFT:
                 x = valor;
                 break;
 
@@ -726,6 +761,10 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
             case KeyEvent.VK_F2:
                 f2 = valor;
+                break;
+
+            case KeyEvent.VK_F3:
+                f3 = valor;
                 break;
 
             default:

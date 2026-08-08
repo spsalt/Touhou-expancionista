@@ -40,6 +40,7 @@ public class Point {
         // Encostou: vira XP.
         if(dist < 8){
             isAlive = false;
+            Som.tocar(Som.ITEM);
             Main.player.setXp(Main.player.getXp()+1);
             return;
         }
@@ -58,11 +59,26 @@ public class Point {
 
     public void render(Graphics2D g){
 
-        // Muda de cor quando esta sendo atraido, pra dar feedback da coleta.
+        java.awt.image.BufferedImage img = Assets.get("sprites/GFX/unesp_item.png");
+
+        int lado = Config.getInt("item.tamanho", 18);
+
+        if (img != null) {
+
+            // Brilho por tras quando esta sendo atraido, pra dar feedback
+            // de que o item ja e seu.
+            if (isCatch) {
+                g.setColor(new Color(120, 220, 255, 90));
+                g.fillOval((int)x - lado, (int)y - lado, lado*2, lado*2);
+            }
+
+            g.drawImage(img, (int)x - lado/2, (int)y - lado/2, lado, lado, null);
+            return;
+        }
+
+        // Sem o PNG: quadradinho simples.
         g.setColor(isCatch ? Color.CYAN : new Color(80, 120, 255));
-
         g.fillRect((int)x-5, (int)y-5, 10, 10);
-
         g.setColor(Color.WHITE);
         g.drawRect((int)x-5, (int)y-5, 10, 10);
 

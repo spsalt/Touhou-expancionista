@@ -4,6 +4,7 @@ import java.awt.Color;
 
 import src.Config;
 import src.Main;
+import src.Som;
 import src.bulletTypes.IntegralBullet;
 import src.enemyTypes.BossEnemy;
 
@@ -53,6 +54,13 @@ public class SomatorioSpell extends SpellCard {
 
     private int disparos = 0;
 
+    /** Padroes de espalhamento, ciclados a cada disparo. */
+    private static final IntegralBullet.PadraoEspalhamento[] PADROES = {
+        IntegralBullet.PadraoEspalhamento.DIVERGENTE,
+        IntegralBullet.PadraoEspalhamento.LEQUE,
+        IntegralBullet.PadraoEspalhamento.ESPIRAL
+    };
+
     public SomatorioSpell() {
 
         super("Σ  Somatório de Faltas",
@@ -79,6 +87,8 @@ public class SomatorioSpell extends SpellCard {
         if (t % cadencia != 0) {
             return;
         }
+
+        Som.tocar(Som.TIRO_INIMIGO);
 
         // Um sigma de cada lado do campo. Alternam de posicao a cada
         // disparo, pra o corredor seguro nunca ficar no mesmo lugar.
@@ -107,7 +117,7 @@ public class SomatorioSpell extends SpellCard {
 
             double[] ponto = pontoAoLongoDoContorno(alvo);
 
-            Main.bullets.add(new IntegralBullet(
+            IntegralBullet bala = new IntegralBullet(
                 cx + ponto[0] * escalaX,
                 cy + ponto[1] * escalaY,
                 0,
@@ -117,7 +127,19 @@ public class SomatorioSpell extends SpellCard {
                 raioBala,
                 true,
                 new Color(120, 170, 255)
-            ));
+            );
+
+            // O sigma desce inteiro e so depois se desfaz, no padrao do
+            // disparo atual (ciclado, pra nao repetir onda apos onda).
+            bala.configurarEspalhamento(
+                Config.getInt("adriana.somatorio.ticksAteEspalhar", 85),
+                PADROES[disparos % PADROES.length],
+                i, balasPorSimbolo,
+                Config.getDouble("adriana.somatorio.aberturaEspalhamento", 0.8),
+                Config.getDouble("adriana.somatorio.ganhoVelocidade", 1.15)
+            );
+
+            Main.bullets.add(bala);
         }
     }
 

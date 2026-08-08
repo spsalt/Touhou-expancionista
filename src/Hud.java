@@ -72,6 +72,11 @@ public class Hud {
         desenharIcones(g, painelX, Main.CAMPO_Y + Y_VIDAS_ICONES, Main.player.getVidas(),
                        new Color(255, 90, 90));
 
+        if (Main.debugMode) {
+            g.setColor(new Color(140, 255, 140));
+            g.drawString("INFINITAS", painelX + 78, Main.CAMPO_Y + Y_VIDAS_ICONES);
+        }
+
         desenharSecaoGptExpansao(g);
 
         g.setFont(FONTE_TEXTO);
@@ -149,15 +154,18 @@ public class Hud {
 
         g.setColor(new Color(140, 140, 140));
         g.drawString("Z  atirar",       painelX, rodape);
-        g.drawString("X  foco",         painelX, rodape + 18);
+        g.drawString("X/Shift foco",    painelX, rodape + 18);
         g.drawString("C  autofire",     painelX, rodape + 36);
         g.drawString("V / clique GPT",  painelX, rodape + 54);
         g.drawString("ESC pausar",      painelX, rodape + 72);
         g.drawString("F5 recarregar",   painelX, rodape + 90);
 
-        if (Config.getBool("debug.permitirPularEstagio", true)) {
+        g.setColor(new Color(120, 120, 130));
+        g.drawString("F3 debug",      painelX, rodape + 108);
+
+        if (Main.debugMode) {
             g.setColor(new Color(180, 160, 100));
-            g.drawString("F2 pular fase", painelX, rodape + 108);
+            g.drawString("F2 pular fase", painelX, rodape + 126);
         }
     }
 
