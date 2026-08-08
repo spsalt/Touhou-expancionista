@@ -40,6 +40,9 @@ public final class Som {
 
     /* --- combate --- */
     public static final String TIRO_JOGADOR   = "audio/se_plst00.wav";
+    public static final String TIRO_PONTEIRO  = "audio/tiro_ponteiro.wav";
+    public static final String TIRO_RICOCHETE = "audio/tiro_ricochete.wav";
+    public static final String QUIQUE         = "audio/quique.wav";
     public static final String TIRO_INIMIGO   = "audio/se_tan00.wav";
     public static final String INIMIGO_MORRE  = "audio/se_enep00.wav";
     public static final String JOGADOR_DANO   = "audio/se_pldead00.wav";
@@ -56,6 +59,31 @@ public final class Som {
     public static final String CHEFE_MORRE    = "audio/se_enep01.wav";
     /** Voiceline do Clayton: "VOCE JA OUVIU FALAR EM LATEX?" */
     public static final String CLAYTON_LATEX  = "audio/latex_voz.wav";
+
+    /* --- PAPA --- */
+
+    /** Bandeira fechou a mira e travou a direcao. */
+    public static final String PAPA_MIRA     = "audio/se_alert.wav";
+
+    /** Bandeira saiu. */
+    public static final String PAPA_AVANCA   = "audio/se_kira00.wav";
+
+    /** Simbolo certo digitado na fita da maquina de Turing. */
+    public static final String TURING_OK     = "audio/se_ok00.wav";
+
+    /** Simbolo errado, ou o relogio zerou. */
+    public static final String TURING_ERRO   = "audio/se_cancel00.wav";
+
+    /** Um no foi conquistado por um prototipo, no Optimum Path Forest. */
+    public static final String OPF_CONQUISTA = "audio/se_ch00.wav";
+
+    /* --- vozes de cutscene (bleeps 8-bit, um pitch por personagem) --- */
+    public static final String VOZ_ESTUDANTE = "audio/voz_estudante.wav";
+    public static final String VOZ_ADRIANA   = "audio/voz_adriana.wav";
+    public static final String VOZ_CLAYTON   = "audio/voz_clayton.wav";
+    public static final String VOZ_SANTO_JAVA    = "audio/voz_santo_java.wav";
+    public static final String VOZ_NARRADOR  = "audio/voz_narrador.wav";
+    public static final String VOZ_PAPA      = "audio/voz_papa.wav";
 
     /* --- interface --- */
     public static final String MENU_MOVER     = "audio/se_select00.wav";

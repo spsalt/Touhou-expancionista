@@ -5,6 +5,8 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 
 import src.bulletTypes.IntegralBullet;
+import src.bulletTypes.PonteiroBullet;
+import src.bulletTypes.RicocheteBullet;
 
 /**
  * O estudante expancionista.
@@ -35,6 +37,20 @@ public class Player {
 
     /** Ticks restantes de invulnerabilidade. > 0 = piscando e imune. */
     private int invulneravel = 0;
+
+    /**
+     * Quando true, WASD/setas nao movem mais o jogador — quem manda na
+     * posicao dele e outra coisa (a maquina de Turing do PAPA prende ele
+     * dentro do cabecote da fita).
+     *
+     * Travado tambem NAO ATIRA e NAO SOLTA BOMBA. Isso e proposital: a
+     * maquina de Turing e o unico ataque do jogo em que a resposta certa
+     * nao e mexer no personagem, e deixar o tiro ligado faria o jogador
+     * segurar o Z por reflexo em vez de olhar pra fita. Sem poder atacar,
+     * a unica saida e executar o programa — que e exatamente o que o
+     * ataque cobra.
+     */
+    private boolean travado = false;
 
     /** Contador regressivo ate o proximo tiro sair. */
     private int shootTime = 0;
@@ -74,6 +90,24 @@ public class Player {
     private double raioBala;
     private double danoBala;
     private int invulnerabilidadeTicks;
+
+    /* --- tipos de tiro desbloqueados por nivel --- */
+
+    private int nivelPonteiro;
+    private int nivelRicochete;
+    private int maxBalasDoLeque;
+    private int maxPonteiros;
+
+    private double velocidadePonteiro;
+    private double taxaDeGiroPonteiro;
+    private double raioPonteiro;
+    private double fatorDanoPonteiro;
+
+    private double velocidadeRicochete;
+    private double raioRicochete;
+    private double fatorDanoRicochete;
+    private double anguloRicochete;
+    private int quiquesRicochete;
 
     /* --- progressao de nivel --- */
 
@@ -126,6 +160,22 @@ public class Player {
 
         this.invulnerabilidadeTicks = Config.getInt("jogador.invulnerabilidadeTicks", 90);
 
+        this.nivelPonteiro   = Config.getInt("tiro.ponteiro.nivel", 2);
+        this.nivelRicochete  = Config.getInt("tiro.ricochete.nivel", 4);
+        this.maxBalasDoLeque = Math.max(1, Config.getInt("tiro.leque.maximo", 4));
+        this.maxPonteiros    = Math.max(1, Config.getInt("tiro.ponteiro.maximo", 3));
+
+        this.velocidadePonteiro = Config.getDouble("tiro.ponteiro.velocidade", 7.5);
+        this.taxaDeGiroPonteiro = Config.getDouble("tiro.ponteiro.taxaDeGiro", 0.10);
+        this.raioPonteiro       = Config.getDouble("tiro.ponteiro.raio", 4.5);
+        this.fatorDanoPonteiro  = Config.getDouble("tiro.ponteiro.fatorDano", 0.35);
+
+        this.velocidadeRicochete = Config.getDouble("tiro.ricochete.velocidade", 9.0);
+        this.raioRicochete       = Config.getDouble("tiro.ricochete.raio", 6.0);
+        this.fatorDanoRicochete  = Config.getDouble("tiro.ricochete.fatorDano", 0.7);
+        this.anguloRicochete     = Config.getDouble("tiro.ricochete.anguloGraus", 38);
+        this.quiquesRicochete    = Config.getInt("tiro.ricochete.quiques", 3);
+
         this.xpBase      = Math.max(1, Config.getInt("jogador.xpBase", 12));
         this.fatorXp     = Math.max(1.0, Config.getDouble("jogador.fatorXpPorNivel", 2.4));
         this.nivelMaximo = Math.max(1, Config.getInt("jogador.nivelMaximo", 6));
@@ -157,12 +207,15 @@ public class Player {
         subirDeNivel();
 
         // --- movimento ---
-        if (Main.up)    y -= speed;
-        if (Main.down)  y += speed;
-        if (Main.left)  x -= speed;
-        if (Main.right) x += speed;
+        if (!travado) {
 
-        prenderNoCampo();
+            if (Main.up)    y -= speed;
+            if (Main.down)  y += speed;
+            if (Main.left)  x -= speed;
+            if (Main.right) x += speed;
+
+            prenderNoCampo();
+        }
 
         // --- liga/desliga o autofire (tecla C) ---
         // Detecta a BORDA (agora apertado, antes nao): sem isso o tick
@@ -173,7 +226,7 @@ public class Player {
         cAnterior = Main.c;
 
         // --- GPT Expansion (tecla V; tambem pode ser clicada no HUD) ---
-        if (Main.v && !vAnterior) {
+        if (Main.v && !vAnterior && !travado) {
             usarGptExpansao();
         }
         vAnterior = Main.v;
@@ -185,7 +238,7 @@ public class Player {
 
         // Com autofire ligado o Z vira opcional; segurar Z continua
         // funcionando normalmente pra quem preferir.
-        if ((Main.z || autofire) && shootTime <= 0) {
+        if ((Main.z || autofire) && shootTime <= 0 && !travado) {
             atirar();
             shootTime = cadenciaTiro;
         }
@@ -203,8 +256,8 @@ public class Player {
 
     /**
      * Ativa a GPT Expansion: gasta uma carga e solta o efeito que se
-     * expande a partir do jogador (ver GptExpansion.java), matando todo
-     * inimigo e apagando toda bala que ele tocar.
+     * expande a partir do jogador (ver GptExpansion.java): mata inimigo
+     * comum, apaga as balas e fere o chefe sem mata-lo.
      *
      * Publico porque tanto o teclado (V, aqui em tick()) quanto o clique
      * do mouse no botao do HUD (tratado no Main) chamam este metodo.
@@ -244,20 +297,57 @@ public class Player {
     }
 
     /**
-     * Leque de 'level' balas para cima.
-     * Nivel 1 = 1 bala reta; a partir dai as balas se espalham dentro
-     * do angulo shootRad, distribuidas por igual.
+     * O disparo do jogador. Cada nivel DESBLOQUEIA UM TIPO DE TIRO novo,
+     * em vez de so somar mais uma bala no leque.
+     *
+     *   N1  leque
+     *   N2  leque + PONTEIROS   (teleguiados, fracos)
+     *   N3  leque mais largo + ponteiros
+     *   N4  + RICOCHETES        (quicam nas laterais)
+     *   N5  tudo, com o leque cheio
+     *
+     * A diferenca nao e so de numero: cada tipo resolve um problema
+     * diferente. O leque e o dano de frente; o ponteiro caça quem fugiu
+     * pro canto; o ricochete alcança quem esta colado na parede. Somar
+     * balas iguais so aumentava um numero — isto muda COMO se joga.
      */
     private void atirar() {
 
         Som.tocar(Som.TIRO_JOGADOR);
 
-        for (int i = 0; i < level; i++) {
+        dispararLeque();
 
-            // Nivel 1 nao tem leque: divisao por (level-1) daria divisao por zero.
-            double ang = (level == 1)
+        if (level >= nivelPonteiro) {
+            dispararPonteiros();
+        }
+
+        if (level >= nivelRicochete) {
+            dispararRicochetes();
+        }
+
+        if (Config.getBool("debug.balasDosCantos", false)) {
+            balasDosCantos();
+        }
+    }
+
+    /**
+     * O tiro principal: um leque de balas retas pra cima.
+     *
+     * A quantidade cresce com o nivel, mas devagar (ver balasDoLeque):
+     * o grosso do poder novo vem dos TIPOS que os niveis desbloqueiam,
+     * nao da contagem.
+     */
+    private void dispararLeque() {
+
+        int quantidade = balasDoLeque();
+
+        for (int i = 0; i < quantidade; i++) {
+
+            // Uma bala so nao tem leque: dividir por (quantidade-1) daria
+            // divisao por zero.
+            double ang = (quantidade == 1)
                        ? 0
-                       : -shootRad / 2.0 + i * (shootRad / (level - 1.0));
+                       : -shootRad / 2.0 + i * (shootRad / (quantidade - 1.0));
 
             IntegralBullet bala = new IntegralBullet(
                 x, y,
@@ -265,17 +355,77 @@ public class Player {
                 -Math.cos(ang) * velocidadeBala,
                 0, 0,
                 raioBala,
-                false,                    // bala do jogador
+                false,
                 new Color(120, 220, 255)
             );
 
             bala.setDano(danoBala);
+            bala.setSprite(Config.getString("tiro.leque.sprite", "sprites/GFX/bala_leque.png"));
 
             Main.bullets.add(bala);
         }
+    }
 
-        if (Config.getBool("debug.balasDosCantos", false)) {
-            balasDosCantos();
+    /** Quantas balas o leque tem no nivel atual. */
+    private int balasDoLeque() {
+        return Math.min(level, maxBalasDoLeque);
+    }
+
+    /**
+     * PONTEIROS: saem em diagonal pra cima e depois curvam atras do
+     * inimigo mais proximo. Dano baixo — o valor deles e a cobertura.
+     *
+     * Saem inclinados (e nao retos) pra nao competirem com o leque no
+     * mesmo espaco: eles abrem, procuram e voltam.
+     */
+    private void dispararPonteiros() {
+
+        Som.tocar(Som.TIRO_PONTEIRO);
+
+        int quantidade = 1 + (level - nivelPonteiro);
+        quantidade = Math.max(1, Math.min(quantidade, maxPonteiros));
+
+        for (int i = 0; i < quantidade; i++) {
+
+            // Alterna os lados: -90 graus e a vertical pra cima na tela.
+            double lado = (i % 2 == 0) ? -1 : 1;
+            double abertura = 0.6 + 0.25 * (i / 2);
+
+            double ang = -Math.PI / 2 + lado * abertura;
+
+            Main.bullets.add(new PonteiroBullet(
+                x, y, ang,
+                velocidadePonteiro,
+                taxaDeGiroPonteiro,
+                raioPonteiro,
+                danoBala * fatorDanoPonteiro,
+                new Color(150, 255, 170)
+            ));
+        }
+    }
+
+    /**
+     * RICOCHETES: dois losangos em diagonal que quicam nas laterais.
+     * Dano medio, mas varrem a tela em ziguezague e pegam quem esta
+     * encostado na borda.
+     */
+    private void dispararRicochetes() {
+
+        Som.tocar(Som.TIRO_RICOCHETE);
+
+        double ang = Math.toRadians(anguloRicochete);
+
+        for (int lado = -1; lado <= 1; lado += 2) {
+
+            Main.bullets.add(new RicocheteBullet(
+                x, y,
+                Math.sin(ang) * velocidadeRicochete * lado,
+                -Math.cos(ang) * velocidadeRicochete,
+                raioRicochete,
+                danoBala * fatorDanoRicochete,
+                quiquesRicochete,
+                new Color(255, 180, 90)
+            ));
         }
     }
 
@@ -331,13 +481,6 @@ public class Player {
      */
     public boolean levarDano() {
 
-        // Vidas infinitas no modo debug: a bala atravessa sem tirar vida
-        // nem gastar invulnerabilidade, pra dar pra testar um padrao de
-        // chefe do inicio ao fim sem morrer no meio.
-        if (Main.debugMode) {
-            return false;
-        }
-
         if (invulneravel > 0) {
             return false;
         }
@@ -347,16 +490,11 @@ public class Player {
         vidas--;
         invulneravel = invulnerabilidadeTicks;
 
-        // Limpa a tela ao morrer, senao o jogador renasce dentro do inferno.
-        // So MARCA as balas como mortas em vez de remover da lista: este
-        // metodo e chamado de dentro do loop de balas do Main, e mexer no
-        // tamanho da lista ali no meio faria o loop pular elementos.
-        for (int i = 0; i < Main.bullets.size(); i++) {
-
-            if (Main.bullets.get(i).isHitPlayer()) {
-                Main.bullets.get(i).setAlive(false);
-            }
-        }
+        // NAO limpa a tela: as balas continuam onde estao e o jogador
+        // atravessa elas durante a invulnerabilidade. Apagar tudo a cada
+        // dano deixava a luta sem tensao e sumia com o padrao que o
+        // jogador estava lendo — a janela de invencibilidade ja e a
+        // protecao suficiente pra ele se reposicionar.
 
         if (vidas <= 0) {
             Som.tocar(Som.GAME_OVER);
@@ -527,6 +665,15 @@ public class Player {
 
     public void setShootRad(double shootRad) {
         this.shootRad = shootRad;
+    }
+
+    public boolean isTravado() {
+        return travado;
+    }
+
+    /** Trava/destrava o movimento. Quem trava e responsavel por destravar. */
+    public void setTravado(boolean travado) {
+        this.travado = travado;
     }
 
     public double getRadius() {

@@ -1,7 +1,5 @@
 package src.enemyTypes;
 
-import java.awt.Graphics2D;
-
 import src.Config;
 import src.enemyTypes.spellCards.ClaytonlingsSpell;
 import src.enemyTypes.spellCards.LatexSpell;
@@ -24,10 +22,9 @@ import src.enemyTypes.spellCards.XadrezSpell;
  * Igual a Adriana, toda a mecanica de chefe vem de BossEnemy; esta classe
  * so escolhe QUAIS spell cards e QUAL sprite.
  *
- * A UNICA diferenca de estrutura: o LatexSpell precisa DESENHAR (a pagina
- * que desce e o ataque em si, nao um monte de bala). Spell card comum nao
- * desenha nada, entao o render() aqui repassa o desenho pro spell ativo
- * quando ele for o do LaTeX.
+ * O LatexSpell precisa DESENHAR (a pagina que desce e o ataque em si,
+ * nao um monte de bala). Isso nao aparece aqui: quem chama o render() do
+ * ataque e o BossEnemy, pra todo chefe igual.
  */
 public class Clayton extends BossEnemy {
 
@@ -64,23 +61,5 @@ public class Clayton extends BossEnemy {
             Config.getString("clayton.spriteMaligno", "sprites/bosses/Clayton-Maligno.png"),
             Config.getDouble("clayton.escalaSpriteMaligna", 3.8)
         );
-    }
-
-    /**
-     * Desenha o chefe e, se o ataque ativo for o do LaTeX, a pagina dele.
-     *
-     * A pagina vai ANTES do sprite pra o Clayton nao ficar escondido atras
-     * do proprio texto — o jogador precisa ver onde ele esta pra mirar.
-     */
-    @Override
-    public void render(Graphics2D g) {
-
-        SpellCard atual = getSpellCardAtual();
-
-        if (atual instanceof LatexSpell) {
-            ((LatexSpell) atual).render(g);
-        }
-
-        super.render(g);
     }
 }

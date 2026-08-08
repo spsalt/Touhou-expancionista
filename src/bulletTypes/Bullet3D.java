@@ -55,6 +55,16 @@ public class Bullet3D extends Bullet {
     /** Raio do desenho quando a bala esta exatamente no plano da tela. */
     private final double raioBase;
 
+    /**
+     * Quanto da bala DESENHADA conta como hitbox (0 a 1).
+     *
+     * Separado do desenho de proposito: a esfera fica visualmente densa e
+     * ameacadora, mas o jogador consegue se enfiar entre as balas. Encolher
+     * o sprite deixaria o ataque menos imponente; encolher so a colisao
+     * deixa ele generoso sem perder a cara.
+     */
+    private final double fatorHitbox;
+
     private final Color corBase;
 
     /** Distancia do centro em que a bala nasceu (raio inicial da esfera). */
@@ -105,6 +115,8 @@ public class Bullet3D extends Bullet {
         this.vz3 = vz3;
 
         this.raioBase = raioBase;
+        this.fatorHitbox = Math.max(0.05, Math.min(1,
+                src.Config.getDouble("adriana.esfera.fatorHitbox", 0.62)));
         this.distanciaCamera = Math.max(1, distanciaCamera);
         this.velocidadeGiro = velocidadeGiro;
         this.corBase = corBase;
@@ -207,14 +219,17 @@ public class Bullet3D extends Bullet {
         x = centroX + x3 * escala;
         y = centroY + y3 * escala;
 
-        // O raio de colisao acompanha o desenho.
-        radius = Math.max(1, raioBase * escala);
+        // O raio de colisao acompanha o desenho, mas ENCOLHIDO pelo fator:
+        // e o que torna o ataque generoso sem diminuir o visual.
+        radius = Math.max(1, raioBase * escala * fatorHitbox);
     }
 
     @Override
     public void render(Graphics2D g) {
 
-        int d = (int) (radius * 2);
+        // Desenha com o raio CHEIO (sem o fator), so a colisao e menor.
+        double raioDesenho = Math.max(1, raioBase * escala);
+        int d = (int) (raioDesenho * 2);
 
         // Escurece o que esta longe: e o que faz o olho ler o volume da
         // esfera em vez de um monte de bolinha solta na tela.
@@ -239,14 +254,14 @@ public class Bullet3D extends Bullet {
         }
 
         g.setColor(cor);
-        g.fillOval((int) (x - radius), (int) (y - radius), d, d);
+        g.fillOval((int) (x - raioDesenho), (int) (y - raioDesenho), d, d);
 
         // Miolo claro so nas balas da frente: nas de tras ele viraria
         // ruido branco e atrapalharia a leitura de profundidade.
         if (escala > 0.9) {
             g.setColor(new Color(255, 255, 255, limitar((int) (255 * opacidade))));
-            g.fillOval((int) (x - radius * 0.45), (int) (y - radius * 0.45),
-                       (int) (radius * 0.9), (int) (radius * 0.9));
+            g.fillOval((int) (x - raioDesenho * 0.45), (int) (y - raioDesenho * 0.45),
+                       (int) (raioDesenho * 0.9), (int) (raioDesenho * 0.9));
         }
     }
 

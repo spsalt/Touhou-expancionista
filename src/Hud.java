@@ -33,7 +33,7 @@ public class Hud {
     private static final int Y_GPT_BOTAO      = 218;
     private static final int Y_NIVEL_LABEL    = 270;
     private static final int Y_BARRA_XP       = 280;
-    private static final int Y_AUTOFIRE       = 314;
+    private static final int Y_AUTOFIRE       = 356;
 
     private static final int TAMANHO_BOTAO_GPT = 34;
 
@@ -72,11 +72,6 @@ public class Hud {
         desenharIcones(g, painelX, Main.CAMPO_Y + Y_VIDAS_ICONES, Main.player.getVidas(),
                        new Color(255, 90, 90));
 
-        if (Main.debugMode) {
-            g.setColor(new Color(140, 255, 140));
-            g.drawString("INFINITAS", painelX + 78, Main.CAMPO_Y + Y_VIDAS_ICONES);
-        }
-
         desenharSecaoGptExpansao(g);
 
         g.setFont(FONTE_TEXTO);
@@ -86,6 +81,7 @@ public class Hud {
                      painelX, Main.CAMPO_Y + Y_NIVEL_LABEL);
 
         desenharBarraDeXp(g, painelX, Main.CAMPO_Y + Y_BARRA_XP);
+        desenharTiposDeTiro(g);
 
         // Estado do tiro automatico: verde ligado, cinza desligado.
         boolean auto = Main.player.isAutofire();
@@ -166,6 +162,34 @@ public class Hud {
         if (Main.debugMode) {
             g.setColor(new Color(180, 160, 100));
             g.drawString("F2 pular fase", painelX, rodape + 126);
+        }
+    }
+
+    /**
+     * Etiquetas dos tipos de tiro ja desbloqueados, com a cor de cada um.
+     * Sem isso o jogador sobe de nivel, ve balas novas na tela e nao faz
+     * ideia do que ganhou.
+     */
+    private void desenharTiposDeTiro(Graphics2D g) {
+
+        int y = Main.CAMPO_Y + Y_BARRA_XP + 22;
+        int nivel = Main.player.getLevel();
+
+        g.setFont(new Font("Monospaced", Font.PLAIN, 12));
+
+        g.setColor(new Color(120, 220, 255));
+        g.drawString("- leque", painelX, y);
+
+        if (nivel >= Config.getInt("tiro.ponteiro.nivel", 2)) {
+            y += 14;
+            g.setColor(new Color(150, 255, 170));
+            g.drawString("- ponteiro", painelX, y);
+        }
+
+        if (nivel >= Config.getInt("tiro.ricochete.nivel", 4)) {
+            y += 14;
+            g.setColor(new Color(255, 180, 90));
+            g.drawString("- ricochete", painelX, y);
         }
     }
 

@@ -132,6 +132,9 @@ public class LatexSpell extends SpellCard {
     private int intervaloDeDano;
     private int cooldownDano = 0;
 
+    /** Quanto do raio do jogador conta contra a tinta (0 a 1). */
+    private final double fatorHitbox;
+
     public LatexSpell() {
 
         super("LATEX",
@@ -147,6 +150,8 @@ public class LatexSpell extends SpellCard {
         this.margemDireita      = Config.getInt("clayton.latex.margemDireita", 14);
         this.ticksDeEspera   = Config.getInt("clayton.latex.ticksDeEspera", 90);
         this.intervaloDeDano = Math.max(1, Config.getInt("clayton.latex.intervaloDeDano", 30));
+        this.fatorHitbox = Math.max(0.05, Math.min(1,
+                Config.getDouble("clayton.latex.fatorHitbox", 0.55)));
     }
 
     @Override
@@ -318,7 +323,11 @@ public class LatexSpell extends SpellCard {
 
         double px = Main.player.getX();
         double py = Main.player.getY();
-        double r = Main.player.getRadius();
+
+        // Raio ENCOLHIDO pelo fator: as letras continuam do mesmo tamanho
+        // na tela, mas o jogador precisa entrar mais fundo na tinta pra
+        // levar dano. E o que deixa o ataque generoso sem mudar o visual.
+        double r = Main.player.getRadius() * fatorHitbox;
 
         double[][] pontos = {
             { px, py }, { px - r, py }, { px + r, py }, { px, py - r }, { px, py + r }
@@ -352,6 +361,7 @@ public class LatexSpell extends SpellCard {
      * Desenha a pagina descendo. Chamado pelo Clayton no render dele —
      * spell card normalmente nao desenha nada, mas este ataque E o desenho.
      */
+    @Override
     public void render(Graphics2D g) {
 
         if (mascara == null) {

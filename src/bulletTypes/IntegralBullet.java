@@ -225,6 +225,12 @@ public class IntegralBullet extends Bullet {
     @Override
     public void render(Graphics2D g) {
 
+        // Se veio com sprite (as balas do jogador vem), desenha ele
+        // girado pra direcao do movimento e encerra.
+        if (desenharSprite(g, Math.atan2(dy, dx), 2.6)) {
+            return;
+        }
+
         int d = (int) (radius * 2);
 
         // Miolo claro + borda colorida: fica legivel mesmo com a tela cheia de bala.

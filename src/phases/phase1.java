@@ -11,7 +11,9 @@ import src.Main;
 import src.enemyTypes.Adriana;
 import src.enemyTypes.ArcEnemy;
 import src.enemyTypes.Clayton;
+import src.enemyTypes.Enemy;
 import src.enemyTypes.HorizontalEnemy;
+import src.enemyTypes.Papa;
 import src.enemyTypes.PendulumEnemy;
 
 /**
@@ -127,6 +129,8 @@ public class phase1 {
             case 3: stage3(); break;
             case 4: stage4(); break;
             case 5: stage5(); break;
+            case 6: stage6(); break;
+            case 7: stage7(); break;
             default: break;   // fase acabou
         }
 
@@ -149,6 +153,7 @@ public class phase1 {
         // spawnar a forma DELE. Os flags de cutscene NAO sao zerados de
         // proposito — cada conversa acontece uma vez por partida.
         chefeSpawnado = false;
+        chefeAtual = null;
     }
 
     /* =====================================================
@@ -327,6 +332,31 @@ public class phase1 {
     private boolean chefeSpawnado = false;
 
     /**
+     * O chefe do estagio atual.
+     *
+     * O estagio avanca quando ELE morre — nao quando Main.enemies esvazia.
+     * A diferenca importa: o Clayton invoca claytonlings, que sobrevivem a
+     * ele. Esperando a lista esvaziar, o jogador via o chefe morrer e a
+     * cutscene so vinha segundos depois, quando os minions terminassem de
+     * sair da tela.
+     */
+    private Enemy chefeAtual = null;
+
+    /** true quando o chefe do estagio ja nasceu e ja morreu. */
+    private boolean chefeDerrotado() {
+        return chefeSpawnado && chefeAtual != null && !chefeAtual.isAlive();
+    }
+
+    /**
+     * Limpa o que o chefe deixou pra tras (minions e balas dele).
+     * Chamado assim que ele morre, pra a cutscene abrir com a tela limpa.
+     */
+    private void limparRestosDoChefe() {
+        Main.enemies.clear();
+        Main.bullets.clear();
+    }
+
+    /**
      * ESTAGIO 2 — Adriana, forma base (Roteiro.txt linhas 11 a 26).
      * Cutscene do encontro + ataques de integral e somatorio.
      */
@@ -342,13 +372,17 @@ public class phase1 {
             chefeSpawnado = true;
             // A luta acontece na frente da sala 7 — o fundo acompanha.
             Main.fundo.trocarImagem("sprites/ambient/sala7.png");
-            Main.enemies.add(Adriana.criarFormaBase());
+            chefeAtual = Adriana.criarFormaBase();
+            Main.enemies.add(chefeAtual);
             return;
         }
 
         // Espera um pouco antes de checar: no tick do spawn a lista ainda
         // nao refletiu a chefe e o estagio passaria direto.
-        if (time > 10 && Main.enemies.isEmpty()) {
+        if (chefeDerrotado()) {
+
+            limparRestosDoChefe();
+
             proximoEstagio();
         }
     }
@@ -368,11 +402,15 @@ public class phase1 {
         if (!chefeSpawnado) {
             chefeSpawnado = true;
             Main.fundo.trocarImagem("sprites/ambient/sala7.png");
-            Main.enemies.add(Adriana.criarFormaMaligna());
+            chefeAtual = Adriana.criarFormaMaligna();
+            Main.enemies.add(chefeAtual);
             return;
         }
 
-        if (time > 10 && Main.enemies.isEmpty()) {
+        if (chefeDerrotado()) {
+
+            limparRestosDoChefe();
+
 
             // Cutscene de derrota antes de fechar o arco da Adriana.
             if (!cutsceneDerrotaMostrada) {
@@ -383,6 +421,7 @@ public class phase1 {
 
             // Arco da Adriana fechado: o cenario volta ao caminho do DCO.
             Main.fundo.trocarImagem(null);
+            Main.musica.trocarFaixa(Config.getString("musica.arquivo", "audio/fase1.wav"));
 
             proximoEstagio();
         }
@@ -412,11 +451,15 @@ public class phase1 {
 
         if (!chefeSpawnado) {
             chefeSpawnado = true;
-            Main.enemies.add(Clayton.criarFormaBase());
+            chefeAtual = Clayton.criarFormaBase();
+            Main.enemies.add(chefeAtual);
             return;
         }
 
-        if (time > 10 && Main.enemies.isEmpty()) {
+        if (chefeDerrotado()) {
+
+            limparRestosDoChefe();
+
             proximoEstagio();
         }
     }
@@ -435,17 +478,107 @@ public class phase1 {
 
         if (!chefeSpawnado) {
             chefeSpawnado = true;
-            Main.enemies.add(Clayton.criarFormaMaligna());
+            chefeAtual = Clayton.criarFormaMaligna();
+            Main.enemies.add(chefeAtual);
             return;
         }
 
-        if (time > 10 && Main.enemies.isEmpty()) {
+        if (chefeDerrotado()) {
+
+            limparRestosDoChefe();
+
 
             if (!cutsceneClaytonDerrotaMostrada) {
                 cutsceneClaytonDerrotaMostrada = true;
                 Main.mostrarCutscene(Cutscene.criarDerrotaClayton());
                 return;
             }
+
+            proximoEstagio();
+        }
+    }
+
+    /* =====================================================
+       ESTAGIOS 6 e 7 - PAPA (Roteiro.txt linhas 58 a 82)
+       =====================================================
+       Mesma estrutura de tres passos dos chefes anteriores. A diferenca
+       e que o estagio 7 e o ULTIMO: a cutscene de derrota dele e o final
+       do jogo, e por isso ela roda antes do proximoEstagio() que fecha a
+       fase (ver acabou()).
+    */
+
+    private boolean cutscenePapaMostrada = false;
+    private boolean cutscenePapaTransfMostrada = false;
+    private boolean cutscenePapaDerrotaMostrada = false;
+
+    /**
+     * ESTAGIO 6 — PAPA, forma base (Roteiro.txt linhas 58 a 68).
+     * Bandeiras e maquina de Turing.
+     */
+    private void stage6() {
+
+        if (!cutscenePapaMostrada) {
+            cutscenePapaMostrada = true;
+            Main.mostrarCutscene(Cutscene.criarEncontroPapa());
+            return;
+        }
+
+        if (!chefeSpawnado) {
+            chefeSpawnado = true;
+
+            // A luta final acontece dentro do LEPEC — o fundo acompanha,
+            // e o PAPA entra com tema proprio.
+            Main.fundo.trocarImagem("sprites/ambient/lepec.png");
+            Main.musica.trocarFaixa(Config.getString("papa.musica", "audio/flower_man.wav"));
+
+            chefeAtual = Papa.criarFormaBase();
+            Main.enemies.add(chefeAtual);
+            return;
+        }
+
+        if (chefeDerrotado()) {
+
+            limparRestosDoChefe();
+
+            proximoEstagio();
+        }
+    }
+
+    /**
+     * ESTAGIO 7 — PAPA IA (Roteiro.txt linhas 69 a 82).
+     * O Optimum Path Forest, e o final do jogo.
+     */
+    private void stage7() {
+
+        if (!cutscenePapaTransfMostrada) {
+            cutscenePapaTransfMostrada = true;
+            Main.mostrarCutscene(Cutscene.criarTransformacaoPapa());
+            return;
+        }
+
+        if (!chefeSpawnado) {
+            chefeSpawnado = true;
+
+            Main.fundo.trocarImagem("sprites/ambient/lepec.png");
+            Main.musica.trocarFaixa(Config.getString("papa.musica", "audio/flower_man.wav"));
+
+            chefeAtual = Papa.criarFormaIA();
+            Main.enemies.add(chefeAtual);
+            return;
+        }
+
+        if (chefeDerrotado()) {
+
+            limparRestosDoChefe();
+
+            if (!cutscenePapaDerrotaMostrada) {
+                cutscenePapaDerrotaMostrada = true;
+                Main.mostrarCutscene(Cutscene.criarDerrotaPapa());
+                return;
+            }
+
+            Main.fundo.trocarImagem(null);
+            Main.musica.trocarFaixa(Config.getString("musica.arquivo", "audio/fase1.wav"));
 
             proximoEstagio();
         }
@@ -497,8 +630,18 @@ public class phase1 {
 
     /** true quando todos os estagios acabaram. */
     public boolean acabou() {
-        return stage > 5;
+        return stage > ULTIMO_ESTAGIO;
     }
+
+    /**
+     * Numero do ultimo estagio da fase.
+     *
+     * Constante e nao numero solto porque ele aparece no acabou() e em
+     * qualquer conta de progresso — esquecer de atualizar um dos lugares
+     * ao acrescentar um chefe deixaria o jogo terminando cedo demais (foi
+     * o que aconteceu quando o Clayton entrou).
+     */
+    public static final int ULTIMO_ESTAGIO = 7;
 
     /* =========================
             GETTERS E SETTERS

@@ -1,7 +1,7 @@
 package src.enemyTypes;
 
 import src.Config;
-import src.enemyTypes.spellCards.AreaRiemannSpell;
+import src.enemyTypes.spellCards.SomasDeRiemannSpell;
 import src.enemyTypes.spellCards.EsferaSpell;
 import src.enemyTypes.spellCards.IntegralSpell;
 import src.enemyTypes.spellCards.SomatorioSpell;
@@ -21,7 +21,7 @@ import src.enemyTypes.spellCards.SpellCard;
  *     - Σ Somatório de Faltas
  *
  *   FORMA INTEGRAL MALIGNA (linhas 29 a 36, os "cachorros que sabem cálculo")
- *     - ∑f(x)Δx Área Sob a Curva
+ *     - ∑f(x)Δx Somas de Riemann
  *     - ∮ Sólido de Revolução  (o ataque em 3D)
  *
  * Cada forma e uma instancia separada, criada pelos metodos fabrica
@@ -56,13 +56,13 @@ public class Adriana extends BossEnemy {
 
     /**
      * Forma integral maligna: depois de "DOS CACHORROS QUE SABEM CÁLCULO!".
-     * Ataques mais pesados — area de Riemann e o solido de revolucao em 3D.
+     * Ataques mais pesados — somas de Riemann e o solido de revolucao em 3D.
      */
     public static Adriana criarFormaMaligna() {
 
         return new Adriana(
             new SpellCard[] {
-                new AreaRiemannSpell(),
+                new SomasDeRiemannSpell(),
                 new EsferaSpell()
             },
             "sprites/bosses/adriana-integralmaligna.png",

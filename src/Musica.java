@@ -33,6 +33,9 @@ public class Musica {
     private boolean ligada;
     private float volume;
 
+    /** Caminho da faixa aberta agora. Evita reabrir a mesma a toa. */
+    private String faixaAtual = null;
+
     public Musica() {
         carregarConfig();
     }
@@ -53,6 +56,27 @@ public class Musica {
         ajustarVolume();
     }
 
+    /**
+     * Troca a trilha em andamento por outra e ja comeca a tocar.
+     *
+     * Serve pra dar tema proprio a um chefe (o PAPA tem o dele). Se a
+     * faixa pedida ja for a que esta tocando, NAO FAZ NADA — reabrir o
+     * Clip cortaria a musica no meio, e a fase chama isso dentro do
+     * tick(), ou seja, sessenta vezes por segundo.
+     */
+    public void trocarFaixa(String caminho) {
+
+        if (!ligada || caminho == null || caminho.equals(faixaAtual)) {
+            return;
+        }
+
+        pararEFechar();
+        abrir(caminho);
+        ajustarVolume();
+
+        tocarDoInicio();
+    }
+
     /** Abre o arquivo e prepara o Clip. Qualquer falha so desliga a musica. */
     private void abrir(String caminho) {
 
@@ -70,6 +94,7 @@ public class Musica {
             clip = AudioSystem.getClip();
             clip.open(stream);
             pronta = true;
+            faixaAtual = caminho;
 
             System.out.println("[Musica] Carregada: " + arquivo.getPath());
 
@@ -149,6 +174,7 @@ public class Musica {
 
         clip = null;
         pronta = false;
+        faixaAtual = null;
     }
 
     /* =========================
@@ -165,5 +191,10 @@ public class Musica {
 
     public float getVolume() {
         return volume;
+    }
+
+    /** Caminho da faixa tocando agora, ou null se nao ha nenhuma. */
+    public String getFaixaAtual() {
+        return faixaAtual;
     }
 }

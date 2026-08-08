@@ -34,14 +34,31 @@ public class Claytonling extends Enemy {
 
     /** O que ele esta fazendo agora. */
     private enum Estado {
-        PERSEGUINDO,
+        /** Ainda ajustando a rota — da pra ele te seguir se voce andar. */
+        APROXIMANDO,
+        /** Rota TRAVADA: vai reto e nao corrige mais. E aqui que se desvia. */
+        INVESTINDO,
+        /** Foi desviado: segue reto pra fora da tela e nao volta. */
         FUGINDO
     }
 
-    private Estado estado = Estado.PERSEGUINDO;
+    private Estado estado = Estado.APROXIMANDO;
+
+    /**
+     * Direcao travada da investida. Fica fixa desde o momento em que ele
+     * decide atacar — e o que permite desviar: se ele corrigisse a rota o
+     * tempo todo, seria impossivel escapar de um perseguidor mais rapido.
+     */
+    private double investidaX, investidaY;
+
+    /** Distancia em que ele para de corrigir a rota e parte pra cima de voce. */
+    private final double raioDeInvestida;
 
     private final double velocidadePerseguicao;
     private final double velocidadeFuga;
+
+    /** Velocidade durante a investida travada (mais rapida que a aproximacao). */
+    private final double velocidadeInvestida;
 
     /** Menor distancia ate o jogador ja alcancada nesta perseguicao. */
     private double menorDistancia = Double.MAX_VALUE;
@@ -66,7 +83,9 @@ public class Claytonling extends Enemy {
 
         this.velocidadePerseguicao = Config.getDouble("clayton.claytonling.velocidade", 2.6);
         this.velocidadeFuga        = Config.getDouble("clayton.claytonling.velocidadeFuga", 7.0);
+        this.velocidadeInvestida   = Config.getDouble("clayton.claytonling.velocidadeInvestida", 6.2);
         this.raioDeAproximacao     = Config.getDouble("clayton.claytonling.raioDeAproximacao", 130.0);
+        this.raioDeInvestida       = Config.getDouble("clayton.claytonling.raioDeInvestida", 190.0);
         this.folgaDeDesvio         = Config.getDouble("clayton.claytonling.folgaDeDesvio", 45.0);
         this.ticksAteDesistir      = Config.getInt("clayton.claytonling.ticksAteDesistir", 420);
 
@@ -77,6 +96,49 @@ public class Claytonling extends Enemy {
         this.escalaSprite = Config.getDouble("clayton.claytonling.escalaSprite", 2.0);
     }
 
+    /**
+     * Alem do movimento herdado, checa o CONTATO com o jogador.
+     *
+     * Claytonling nao atira — o corpo dele E o ataque. Sem esta checagem
+     * ele atravessava o jogador sem fazer nada, e a spell card inteira
+     * virava enfeite.
+     */
+    @Override
+    public void tick() {
+
+        super.tick();
+
+        if (isAlive) {
+            colidirComJogador();
+        }
+    }
+
+    /**
+     * Machuca ao encostar — mas SO enquanto ainda e uma ameaca.
+     * Quem ja foi desviado esta indo embora e nao deve mais dar dano:
+     * e a recompensa por ter desviado direito.
+     */
+    private void colidirComJogador() {
+
+        if (estado == Estado.FUGINDO || Main.player == null) {
+            return;
+        }
+
+        double dist = Main.getDist(x, y, Main.player.getX(), Main.player.getY());
+
+        if (dist <= radius + Main.player.getRadius()) {
+            Main.player.levarDano();
+        }
+    }
+
+    /**
+     * Tres fases: aproximar corrigindo a rota, travar a investida, e (se
+     * foi desviado) fugir reto pra fora.
+     *
+     * A fase de INVESTIDA travada e o que torna o desvio possivel. Antes
+     * ele perseguia corrigindo a rota a cada tick — como e mais rapido que
+     * o jogador, nao existia desvio, so uma questao de tempo ate encostar.
+     */
     @Override
     protected void mover() {
 
@@ -93,30 +155,56 @@ public class Claytonling extends Enemy {
 
         double dist = Main.getDist(x, y, Main.player.getX(), Main.player.getY());
 
-        // Guarda o quao perto ele ja chegou.
         if (dist < menorDistancia) {
             menorDistancia = dist;
         }
 
-        // Foi desviado: chegou perto, mas agora esta se afastando do
-        // ponto mais proximo que alcancou.
+        // --- APROXIMANDO: ainda mira, mas devagar ---
+        if (estado == Estado.APROXIMANDO) {
+
+            if (dist <= raioDeInvestida) {
+                travarInvestida();
+            } else {
+                x += dirXParaJogador() * velocidadePerseguicao;
+                y += dirYParaJogador() * velocidadePerseguicao;
+            }
+
+            if (t > ticksAteDesistir) {
+                desistir();
+            }
+
+            return;
+        }
+
+        // --- INVESTINDO: rota fixa, sem correcao ---
+        x += investidaX * velocidadeInvestida;
+        y += investidaY * velocidadeInvestida;
+
+        // Passou reto: chegou perto e agora esta se afastando do ponto
+        // mais proximo que alcancou. Perdeu a chance e vai embora.
         boolean chegouPerto = menorDistancia <= raioDeAproximacao;
         boolean estaSeAfastando = dist > menorDistancia + folgaDeDesvio;
 
         if (chegouPerto && estaSeAfastando) {
             desistir();
-            return;
         }
+    }
 
-        // Cansou de perseguir sem nunca encostar.
-        if (t > ticksAteDesistir) {
-            desistir();
-            return;
+    /**
+     * Congela a direcao e acelera: e a "investida" que o jogador desvia.
+     * O sinal visual (o aro fica vermelho) avisa que a rota travou.
+     */
+    private void travarInvestida() {
+
+        estado = Estado.INVESTINDO;
+
+        investidaX = dirXParaJogador();
+        investidaY = dirYParaJogador();
+
+        // Se por acaso estiver exatamente em cima, desce.
+        if (investidaX == 0 && investidaY == 0) {
+            investidaY = 1;
         }
-
-        // Perseguicao: vai reto na direcao do jogador.
-        x += dirXParaJogador() * velocidadePerseguicao;
-        y += dirYParaJogador() * velocidadePerseguicao;
     }
 
     /**
@@ -128,20 +216,29 @@ public class Claytonling extends Enemy {
 
         estado = Estado.FUGINDO;
 
-        if (Main.player == null) {
-            fugaY = -1;
-            fugaX = 0;
+        // Se ele ja estava investindo, MANTEM a direcao da investida: ele
+        // passou reto por voce e sai pelo mesmo lado, "pelas suas costas".
+        // Trocar pra direcao oposta ao jogador aqui faria ele dar um
+        // solavanco estranho no ar.
+        if (investidaX != 0 || investidaY != 0) {
+            fugaX = investidaX;
+            fugaY = investidaY;
             return;
         }
 
-        // Foge no sentido OPOSTO ao jogador.
+        if (Main.player == null) {
+            fugaX = 0;
+            fugaY = 1;
+            return;
+        }
+
         double dx = x - Main.player.getX();
         double dy = y - Main.player.getY();
         double d = Math.sqrt(dx * dx + dy * dy);
 
         if (d < 0.01) {
             fugaX = 0;
-            fugaY = -1;
+            fugaY = 1;
             return;
         }
 
@@ -171,9 +268,17 @@ public class Claytonling extends Enemy {
 
         // Aro colorido pelo estado: verde perseguindo, azul fugindo.
         // E o unico jeito do jogador saber que aquele ja e inofensivo.
-        g.setColor(estado == Estado.FUGINDO
-                 ? new Color(120, 180, 255, 200)
-                 : new Color(120, 255, 120, 200));
+        // Verde = ainda mirando | VERMELHO = rota travada, hora de desviar
+        // | azul = ja foi desviado e e inofensivo.
+        Color aro;
+
+        switch (estado) {
+            case FUGINDO:    aro = new Color(120, 180, 255, 200); break;
+            case INVESTINDO: aro = new Color(255, 90, 90, 230);   break;
+            default:         aro = new Color(120, 255, 120, 200); break;
+        }
+
+        g.setColor(aro);
 
         g.drawOval((int) (x - radius), (int) (y - radius), (int) (radius * 2), (int) (radius * 2));
 
@@ -189,5 +294,10 @@ public class Claytonling extends Enemy {
 
     public boolean estaFugindo() {
         return estado == Estado.FUGINDO;
+    }
+
+    /** true enquanto a rota esta travada (a janela pra desviar). */
+    public boolean estaInvestindo() {
+        return estado == Estado.INVESTINDO;
     }
 }

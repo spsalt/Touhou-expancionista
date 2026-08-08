@@ -65,11 +65,28 @@ public class Cutscene {
         final Lado lado;
         final Color cor;
 
+        /** Bleep tocado a cada letra que aparece. Da "voz" ao personagem. */
+        final String voz;
+
+        /**
+         * Posicao ANIMADA: 0 = recuado (calado), 1 = a frente (falando).
+         *
+         * E o que faz o retrato deslizar em vez de teleportar. Fica no
+         * Personagem e nao na Fala porque a animacao pertence a quem esta
+         * em cena, e precisa sobreviver a troca de falas.
+         */
+        double avanco = 0;
+
         public Personagem(String nome, String sprite, Lado lado, Color cor) {
+            this(nome, sprite, lado, cor, null);
+        }
+
+        public Personagem(String nome, String sprite, Lado lado, Color cor, String voz) {
             this.nome = nome;
             this.sprite = sprite;
             this.lado = lado;
             this.cor = cor;
+            this.voz = voz;
         }
 
         public String getNome() {
@@ -183,6 +200,9 @@ public class Cutscene {
 
     private double velocidadeTexto;
 
+    /** Fracao do caminho que o retrato percorre por tick (0.12 = suave). */
+    private double suavidadeRetrato;
+
     /** Guardado pra poder voltar ao inicio no reiniciar(). */
     private final String fundoInicial;
 
@@ -198,6 +218,8 @@ public class Cutscene {
     /** (Re)le os ajustes. Chamado no construtor e no hot-reload (F5). */
     public void carregarConfig() {
         this.velocidadeTexto = Math.max(0.1, Config.getDouble("cutscene.velocidadeTexto", 0.9));
+        this.suavidadeRetrato = Math.max(0.01, Math.min(1,
+                Config.getDouble("cutscene.suavidadeRetrato", 0.12)));
     }
 
     /** Volta a cena pro comeco. Chame antes de exibir de novo. */
@@ -208,6 +230,11 @@ public class Cutscene {
         somTocado = false;
         fundoAtual = fundoInicial;
         elenco = elencoInicial;
+
+        // Zera a animacao, senao a cena reabriria com o retrato ja avancado.
+        for (Personagem p : elencoInicial) {
+            p.avanco = 0;
+        }
     }
 
     public boolean acabou() {
@@ -254,9 +281,15 @@ public class Cutscene {
             String texto = falas[indice].texto;
 
             if (charsMostrados < texto.length()) {
+
+                int antes = (int) charsMostrados;
                 charsMostrados = Math.min(texto.length(), charsMostrados + velocidadeTexto);
+
+                tocarBleep(texto, antes, (int) charsMostrados);
             }
         }
+
+        animarRetratos();
 
         t++;
     }
@@ -270,6 +303,71 @@ public class Cutscene {
 
         if (falas[indice].elencoNovo != null) {
             elenco = falas[indice].elencoNovo;
+        }
+    }
+
+    /**
+     * Bleep de maquina de escrever, com o pitch do personagem que fala.
+     *
+     * So dispara quando um caractere NOVO aparece (antes != agora), senao
+     * tocaria a cada tick mesmo com o texto parado. Pula espaco e
+     * pontuacao: o ritmo fica mais natural e evita metralhadora de bleep.
+     */
+    private void tocarBleep(String texto, int antes, int agora) {
+
+        if (agora <= antes || agora > texto.length()) {
+            return;
+        }
+
+        // Toca uma vez por PASSO, nao uma por letra: com velocidade > 1
+        // sairiam varios bleeps sobrepostos no mesmo frame.
+        char c = texto.charAt(agora - 1);
+
+        if (c == ' ' || c == '.' || c == ',' || c == '!' || c == '?') {
+            return;
+        }
+
+        Fala f = falas[indice];
+
+        String voz = (f.personagem != null && f.personagem.voz != null)
+                   ? f.personagem.voz
+                   : Som.VOZ_NARRADOR;
+
+        Som.tocar(voz);
+    }
+
+    /**
+     * Move os retratos suavemente entre "recuado" e "a frente".
+     *
+     * Interpolacao exponencial (vai um percentual do que falta a cada
+     * tick): comeca rapido e desacelera perto do destino, que e o
+     * movimento que o olho le como natural. Somar um valor fixo daria um
+     * deslize mecanico, de velocidade constante.
+     *
+     * A aparicao central (SANTO JAVA) fica de fora: ela nao desliza, aparece.
+     */
+    private void animarRetratos() {
+
+        if (acabou()) {
+            return;
+        }
+
+        Personagem falante = falas[indice].personagem;
+
+        for (Personagem p : elenco) {
+
+            if (p.lado == Lado.CENTRO) {
+                continue;
+            }
+
+            double destino = (p == falante) ? 1.0 : 0.0;
+
+            p.avanco += (destino - p.avanco) * suavidadeRetrato;
+
+            // Encosta no destino, pra nao ficar eternamente em 0.999.
+            if (Math.abs(destino - p.avanco) < 0.005) {
+                p.avanco = destino;
+            }
         }
     }
 
@@ -367,32 +465,37 @@ public class Cutscene {
                 continue;
             }
 
-            boolean falando = (atual.personagem == p);
-
-            // Aparicao central (o JAJAVA): so existe enquanto fala.
+            // Aparicao central (o SANTO JAVA): so existe enquanto fala.
             if (p.lado == Lado.CENTRO) {
 
-                if (falando) {
+                if (atual.personagem == p) {
                     desenharAparicaoCentral(g, img);
                 }
 
                 continue;
             }
 
-            int altura = (int) (Main.CAMPO_H * (falando ? 0.46 : 0.42));
+            // TUDO interpolado por p.avanco (0 recuado, 1 a frente), entao
+            // tamanho, posicao e opacidade mudam juntos e de forma continua.
+            double a = p.avanco;
+
+            int altura = (int) (Main.CAMPO_H * (0.42 + 0.04 * a));
             int largura = img.getWidth() * altura / img.getHeight();
 
-            // Levemente pra fora da borda do campo, so o suficiente pra dar
-            // a sensacao de que continuam alem da tela.
-            int x = (p.lado == Lado.ESQUERDA)
-                  ? Main.CAMPO_X - largura / 12
-                  : Main.CAMPO_X + Main.CAMPO_W - largura + largura / 12;
+            // Quem esta calado recua PRA FORA da borda; quem fala avanca
+            // pra dentro. E o deslize que o jogador percebe.
+            double recuo = largura * (0.28 - 0.20 * a);
 
-            int y = Main.CAMPO_Y + Main.CAMPO_H - altura - 190;
+            int x = (p.lado == Lado.ESQUERDA)
+                  ? (int) (Main.CAMPO_X - recuo)
+                  : (int) (Main.CAMPO_X + Main.CAMPO_W - largura + recuo);
+
+            // Sobe um pouquinho ao falar: reforca o "passo a frente".
+            int y = (int) (Main.CAMPO_Y + Main.CAMPO_H - altura - 190 - 10 * a);
 
             Composite anterior = g.getComposite();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
-                                                      falando ? 1f : 0.8f));
+                                                      (float) (0.72 + 0.28 * a)));
 
             g.drawImage(img, x, y, largura, altura, null);
 
@@ -401,7 +504,7 @@ public class Cutscene {
     }
 
     /**
-     * Aparicao no centro do campo, pulsando — usada pelo JAJAVA, que e uma
+     * Aparicao no centro do campo, pulsando — usada pelo SANTO JAVA, que e uma
      * voz mental e nao um personagem presente na cena.
      */
     private void desenharAparicaoCentral(Graphics2D g, BufferedImage img) {
@@ -565,27 +668,34 @@ public class Cutscene {
     private static final String SPRITE_ESTUDANTE = "sprites/player/estudante.png";
 
     public static final Personagem ESTUDANTE = new Personagem(
-        "Estudante", SPRITE_ESTUDANTE, Lado.ESQUERDA, new Color(70, 120, 200));
+        "Estudante", SPRITE_ESTUDANTE, Lado.ESQUERDA, new Color(70, 120, 200), Som.VOZ_ESTUDANTE);
 
     public static final Personagem ADRIANA = new Personagem(
-        "Adriana", "sprites/bosses/adriana-base.png", Lado.DIREITA, new Color(200, 90, 90));
+        "Adriana", "sprites/bosses/adriana-base.png", Lado.DIREITA, new Color(200, 90, 90), Som.VOZ_ADRIANA);
 
     public static final Personagem ADRIANA_MALIGNA = new Personagem(
-        "Adriana", "sprites/bosses/adriana-integralmaligna.png", Lado.DIREITA, new Color(220, 40, 40));
+        "Adriana", "sprites/bosses/adriana-integralmaligna.png", Lado.DIREITA, new Color(220, 40, 40), Som.VOZ_ADRIANA);
 
     /** O estudante depois de ativar o compilador ("ESPANDAAAAA"). */
     public static final Personagem ESTUDANTE_EXPANSIVO = new Personagem(
-        "Estudante", "sprites/player/estudante_expansivo.png", Lado.ESQUERDA, new Color(70, 150, 220));
+        "Estudante", "sprites/player/estudante_expansivo.png", Lado.ESQUERDA, new Color(70, 150, 220), Som.VOZ_ESTUDANTE);
 
     public static final Personagem CLAYTON = new Personagem(
-        "Clayton", "sprites/bosses/clayton-base.png", Lado.DIREITA, new Color(90, 160, 200));
+        "Clayton", "sprites/bosses/clayton-base.png", Lado.DIREITA, new Color(90, 160, 200), Som.VOZ_CLAYTON);
 
     public static final Personagem CLAYTON_MALIGNO = new Personagem(
-        "Clayton", "sprites/bosses/Clayton-Maligno.png", Lado.DIREITA, new Color(60, 200, 160));
+        "Clayton", "sprites/bosses/Clayton-Maligno.png", Lado.DIREITA, new Color(60, 200, 160), Som.VOZ_CLAYTON);
+
+    public static final Personagem PAPA = new Personagem(
+        "Papa", "sprites/bosses/papa-base.png", Lado.DIREITA, new Color(200, 170, 90), Som.VOZ_PAPA);
+
+    /** O virus depois de largar o corpo: "PAPA IA" (Roteiro.txt linha 70). */
+    public static final Personagem PAPA_IA = new Personagem(
+        "PAPA IA", "sprites/bosses/papa-IA_MALIGNA.png", Lado.DIREITA, new Color(120, 240, 200), Som.VOZ_PAPA);
 
     /** Voz mental: aparece no centro da tela, brilhando, so quando fala. */
-    public static final Personagem JAJAVA = new Personagem(
-        "JAJAVA", "sprites/bosses/jajava.png", Lado.CENTRO, new Color(150, 70, 220));
+    public static final Personagem SANTO_JAVA = new Personagem(
+        "SANTO JAVA", "sprites/bosses/santo_java.png", Lado.CENTRO, new Color(150, 70, 220), Som.VOZ_SANTO_JAVA);
 
     /* =====================================================
        CONTEUDO - fabrica das cutscenes do jogo
@@ -635,7 +745,7 @@ public class Cutscene {
     /**
      * Encontro com a Adriana na frente da sala 7, ao fim do estagio 1
      * (Roteiro.txt linhas 11 a 26). Inclui a ativacao do compilador pelo
-     * IVAN JAJAVA (linhas 13 a 17), que e o que da poder ao jogador.
+     * SANTO JAVA (linhas 13 a 17), que e o que da poder ao jogador.
      *
      * Formato: estilo Touhou, com retratos dos dois lados.
      */
@@ -648,18 +758,18 @@ public class Cutscene {
                                   "sprites/ambient/dco.png"),
 
             // Roteiro.txt linha 13
-            Fala.fala(JAJAVA, "VOCÊ FOI ESCOLHIDO PELA EXPANSÃO... ATIVE VOSSO COMPILADOR!"),
+            Fala.fala(SANTO_JAVA, "VOCÊ FOI ESCOLHIDO PELA EXPANSÃO... ATIVE VOSSO COMPILADOR!"),
 
             // Roteiro.txt linha 14
             Fala.fala(ESTUDANTE, "Quê? Que voz é essa?"),
 
             // Roteiro.txt linha 15
-            Fala.fala(JAJAVA, "RÁPIDO: GRITE DA MATRIZ DO SEU SER... \"ESPANDAAAAA\"!"),
+            Fala.fala(SANTO_JAVA, "RÁPIDO: GRITE DA MATRIZ DO SEU SER... \"ESPANDAAAAA\"!"),
 
             // Roteiro.txt linha 16 — aqui o estudante ATIVA o poder, entao
             // o retrato dele troca pro sprite expansivo a partir desta fala.
             Fala.falaComElenco(ESTUDANTE, "Fazer o quê. ESPANDAAAAA!",
-                               new Personagem[] { ESTUDANTE_EXPANSIVO, JAJAVA }),
+                               new Personagem[] { ESTUDANTE_EXPANSIVO, SANTO_JAVA }),
 
             // Roteiro.txt linha 17
             Fala.narracao("Uma armadura de energia que se expande infinitamente te cobre, "
@@ -686,7 +796,7 @@ public class Cutscene {
             // Roteiro.txt linha 25
             Fala.fala(ESTUDANTE_EXPANSIVO, "COMPILADOR, ESPANDAAAAA!"),
 
-        }, new Personagem[] { ESTUDANTE, JAJAVA }, "sprites/ambient/dco.png");
+        }, new Personagem[] { ESTUDANTE, SANTO_JAVA }, "sprites/ambient/dco.png");
     }
 
     /**
@@ -701,7 +811,7 @@ public class Cutscene {
             Fala.fala(ADRIANA, "QUE PODER É ESSE?!"),
 
             // Roteiro.txt linha 28
-            Fala.fala(ESTUDANTE_EXPANSIVO, "O Jajava me codifica e nada me formatará."),
+            Fala.fala(ESTUDANTE_EXPANSIVO, "O Santo Java me codifica e nada me formatará."),
 
             // Roteiro.txt linha 29
             Fala.fala(ADRIANA, "VOCÊ..... VOCÊ VERÁ O PODER...."),
@@ -830,4 +940,133 @@ public class Cutscene {
 
         }, new Personagem[] { ESTUDANTE_EXPANSIVO, CLAYTON_MALIGNO }, "sprites/ambient/dco.png");
     }
+    /* =====================================================
+       PAPA - Roteiro.txt linhas 58 a 82
+       ===================================================== */
+
+    /**
+     * Encontro com o PAPA no LEPEC (Roteiro.txt linhas 58 a 67).
+     *
+     * A conversa inteira e um mal-entendido: o estudante so quer a chave
+     * da recepcao e o PAPA acha que ele veio cumprir uma profecia. Vira
+     * briga quando o virus ameaca o UBA.
+     */
+    public static Cutscene criarEncontroPapa() {
+
+        return new Cutscene(new Fala[] {
+
+            // Roteiro.txt linha 57 (fecho) — chegada ao LEPEC
+            Fala.narracaoComFundo("...você sente uma aura forte, que faz sua armadura tremer.",
+                                  "sprites/ambient/lepec.png"),
+
+            // Roteiro.txt linha 58
+            Fala.fala(PAPA, "Olha só o que temos aqui! Como profetizado no disquete, você veio."),
+
+            // Roteiro.txt linha 59
+            Fala.fala(ESTUDANTE_EXPANSIVO, "Eu não tenho ideia do que tá acontecendo, eu só quero "
+                                         + "salvar minha lista de exercícios que eu suei pra fazer na mão!"),
+
+            // Roteiro.txt linha 60
+            Fala.fala(PAPA, "E é isso que é seu problema: você não se rendeu ao anticódigo. "
+                          + "Você se esforça muito pelo código."),
+
+            // Roteiro.txt linha 61
+            Fala.fala(ESTUDANTE_EXPANSIVO, "Só me deixa pegar a chave na recepção, vei."),
+
+            // Roteiro.txt linha 62
+            Fala.fala(PAPA, "Você realmente não entende o que está acontecendo aqui, né?"),
+
+            // Roteiro.txt linha 63
+            Fala.fala(ESTUDANTE_EXPANSIVO, "E nem quero saber, tem UBA hoje à noite e eu não posso perder."),
+
+            // Roteiro.txt linha 64
+            Fala.fala(PAPA, "UBA?"),
+
+            // Roteiro.txt linha 65
+            Fala.fala(ESTUDANTE_EXPANSIVO, "Sim."),
+
+            // Roteiro.txt linha 66 — de onde sai o ataque das bandeiras
+            Fala.fala(PAPA, "Já sei onde proliferaremos nosso vírus depois de te derrotar, então."),
+
+            // Roteiro.txt linha 67
+            Fala.fala(ESTUDANTE_EXPANSIVO, "O QUÊ? VOCÊ NÃO MEXE COM O UBA!!!!!!!!!!!!"),
+
+        }, new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA }, "sprites/ambient/lepec.png");
+    }
+
+    /**
+     * Transformacao no PAPA IA (Roteiro.txt linhas 69 a 71).
+     *
+     * O roteiro pede "* tela toda fica branca *". Isso e feito com uma
+     * cartela TITULO no meio da cena: ela ja e desenhada em tela cheia, e
+     * cai bem melhor que um flash — o jogador le a virada em vez de so
+     * levar um susto.
+     */
+    public static Cutscene criarTransformacaoPapa() {
+
+        return new Cutscene(new Fala[] {
+
+            // Roteiro.txt linha 69
+            Fala.fala(PAPA, "O quê? Você conseguiu? não..... não......... NÃO..... "
+                          + "NÃOOOOOOOOOOOOOOOOOOOOOOOOOOO"),
+
+            // Roteiro.txt linha 69 — "* tela toda fica branca *"
+            Fala.titulo("SEGMENTATION FAULT", "o vírus larga o corpo"),
+
+            // Roteiro.txt linha 70 — aqui ele vira a IA
+            Fala.falaComElenco(PAPA_IA, "Agora você vai saber o gosto da derrota!",
+                               new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA_IA }),
+
+            // Roteiro.txt linha 71
+            Fala.fala(ESTUDANTE_EXPANSIVO, "Você falou que ia atacar o UBA. Ninguém encosta no UBA!!!! "
+                                         + "BANZAI!!!!!!!!!!!!!!!"),
+
+        }, new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA }, "sprites/ambient/lepec.png");
+    }
+
+    /**
+     * Derrota do PAPA IA e final do jogo (Roteiro.txt linhas 72 a 82).
+     *
+     * O virus e expulso, o PAPA volta ao normal sem lembrar de nada, e
+     * todo mundo vai pro UBA. A ultima fala e o virus gritando de longe,
+     * ja sem retrato nenhum em cena — ele nao tem mais corpo.
+     */
+    public static Cutscene criarDerrotaPapa() {
+
+        return new Cutscene(new Fala[] {
+
+            // Roteiro.txt linha 72
+            Fala.fala(PAPA_IA, "ARGHHGHHHHHH.. NÃOOOOOO"),
+
+            // Roteiro.txt linha 73 — volta ao normal
+            Fala.falaComElenco(PAPA, "O quê? O que aconteceu?",
+                               new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA }),
+
+            // Roteiro.txt linha 74
+            Fala.fala(ESTUDANTE_EXPANSIVO, "Sei lá, parece que você tava possuído ou algo assim."),
+
+            // Roteiro.txt linha 75
+            Fala.fala(PAPA, "Sei lá também, eu tava lendo uns disquetes e depois "
+                          + "não lembro de mais nada."),
+
+            // Roteiro.txt linha 76
+            Fala.fala(ESTUDANTE, "Estranho. Bora beber no UBA?"),
+
+            // Roteiro.txt linha 77
+            Fala.fala(PAPA, "OBA!"),
+
+            // Roteiro.txt linha 79 — "Foto final todos aparecem no uba bebendo"
+            Fala.narracaoComFundo("E assim, com a lista de exercícios salva, todo mundo "
+                                + "foi parar no UBA.",
+                                  "sprites/ambient/portaria1.png"),
+
+            // Roteiro.txt linha 81 — o virus, sem corpo, gritando de longe
+            Fala.narracao("PAPA IA: ARRRRGHHHHHH NÃO PODE ACABAR ASSIMMMMMM "
+                        + "NAOOOOOOOOOOOOOOOOOOOOOOO"),
+
+            Fala.titulo("FIM", "obrigado por jogar"),
+
+        }, new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA_IA }, "sprites/ambient/lepec.png");
+    }
+
 }

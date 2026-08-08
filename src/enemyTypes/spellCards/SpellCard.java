@@ -1,5 +1,7 @@
 package src.enemyTypes.spellCards;
 
+import java.awt.Graphics2D;
+
 import src.enemyTypes.BossEnemy;
 
 /**
@@ -47,6 +49,32 @@ public abstract class SpellCard {
      * precisar sortear algo ou zerar estado interno antes de rodar.
      */
     public void iniciar(BossEnemy chefe) {
+    }
+
+    /**
+     * Chamado uma vez quando o spell card ACABA — por HP zerado, por
+     * tempo esgotado ou porque a chefe morreu.
+     *
+     * Vazio por padrao. Existe pra ataque que mexe em estado de FORA de
+     * si mesmo poder desfazer o que fez: a maquina de Turing do PAPA
+     * trava o movimento do jogador, e sem este gancho um ataque
+     * interrompido no meio deixaria ele preso pro resto da luta.
+     */
+    public void encerrar(BossEnemy chefe) {
+    }
+
+    /**
+     * Desenho proprio do ataque, chamado pelo BossEnemy ANTES do sprite
+     * da chefe. Vazio por padrao — o ataque comum nao desenha nada, quem
+     * aparece na tela sao as balas que ele criou.
+     *
+     * Existe porque alguns ataques nao sao feitos de bala: o LaTeX do
+     * Clayton desenha uma pagina, a maquina de Turing do PAPA desenha uma
+     * fita. Sem este gancho, cada chefe desses precisaria de um
+     * 'instanceof' no proprio render() — que e exatamente o if por tipo
+     * que o padrao Strategy existe pra evitar.
+     */
+    public void render(Graphics2D g) {
     }
 
     /* =========================

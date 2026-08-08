@@ -7,14 +7,19 @@ import java.awt.Graphics2D;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import src.bulletTypes.Bullet;
+import src.enemyTypes.BossEnemy;
 import src.enemyTypes.Enemy;
 
 /**
  * O ataque especial do jogo ("ative seu GPT interior e destrua todos os
  * trabalhos", como diz a proposta original): a logo do GPT sai do jogador,
- * gira, expande e limpa tudo que encostar nela — mata todo inimigo e
- * apaga toda bala que tocar, do jogador ou inimiga.
+ * gira, expande e limpa tudo que encostar nela: mata inimigo comum,
+ * apaga toda bala (sua ou inimiga) e da um dano forte — mas NAO letal —
+ * em chefe.
  *
  * Ciclo de vida em 3 fases, todo em cima do contador 't' (mesma ideia de
  * Enemy/phase1: nada de maquina de estado, so formula em cima do tempo):
@@ -38,6 +43,16 @@ public class GptExpansion {
     private int t = 0;
     private boolean isAlive = true;
 
+    /**
+     * Quem esta explosao ja acertou.
+     *
+     * A colisao roda TODO TICK enquanto a onda cresce. Pra inimigo comum
+     * isso nao importa (morre no primeiro toque), mas o chefe sobrevive —
+     * e sem esta lista ele levaria o dano dezenas de vezes seguidas, o que
+     * na pratica seria morte instantanea.
+     */
+    private final List<Enemy> jaAtingidos = new ArrayList<>();
+
     /* --- ajustes lidos do game.properties --- */
 
     private final double raioMaximo;
@@ -45,6 +60,9 @@ public class GptExpansion {
     private final int ticksSustentacao;
     private final int ticksFade;
     private final double velocidadeRotacao;
+
+    /** Dano aplicado a um chefe (uma vez por explosao). */
+    private final double danoEmChefe;
 
     private static final String SPRITE = "sprites/GFX/gpt_logo.png";
 
@@ -63,6 +81,7 @@ public class GptExpansion {
         this.ticksSustentacao = Config.getInt("gptExpansao.ticksSustentacao", 12);
         this.ticksFade        = Math.max(1, Config.getInt("gptExpansao.ticksFade", 18));
         this.velocidadeRotacao = Config.getDouble("gptExpansao.velocidadeRotacao", 0.16);
+        this.danoEmChefe = Config.getDouble("gptExpansao.danoEmChefe", 90.0);
     }
 
     /* =========================
@@ -117,9 +136,25 @@ public class GptExpansion {
 
             double dist = Main.getDist(x, y, inimigo.getX(), inimigo.getY());
 
-            if (dist <= raioAtual + inimigo.getRadius()) {
-                // Dano igual ao HP atual mata na hora, mas continua passando
-                // pelo levarDano() normal — pontos e drop de item saem de graca.
+            if (dist > raioAtual + inimigo.getRadius()) {
+                continue;
+            }
+
+            // Cada inimigo so leva o golpe uma vez por explosao.
+            if (jaAtingidos.contains(inimigo)) {
+                continue;
+            }
+
+            jaAtingidos.add(inimigo);
+
+            if (inimigo instanceof BossEnemy) {
+                // CHEFE nao morre de bomba: leva um dano fixo e forte.
+                // Deixar a bomba matar tornaria qualquer spell card
+                // trivial — bastava guardar cargas e pular a luta.
+                inimigo.levarDano(danoEmChefe);
+            } else {
+                // Inimigo comum morre na hora, mas passando pelo
+                // levarDano() normal: pontos e drop saem de graca.
                 inimigo.levarDano(inimigo.getHp());
             }
         }

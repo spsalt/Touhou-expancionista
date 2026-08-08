@@ -196,6 +196,12 @@ public class BossEnemy extends Enemy {
 
         Som.tocar(Som.SPELL_QUEBRA);
 
+        // Avisa o ataque que ele acabou ANTES de trocar o indice, senao
+        // quem receberia o aviso seria o proximo.
+        if (temSpellAtivo()) {
+            spellCards[spellAtual].encerrar(this);
+        }
+
         limparBalasInimigas();
         soltarItens(Config.getInt("chefe.itensPorSpellCard", 8));
 
@@ -221,6 +227,10 @@ public class BossEnemy extends Enemy {
     protected void morrer() {
 
         isAlive = false;
+
+        if (temSpellAtivo()) {
+            spellCards[spellAtual].encerrar(this);
+        }
 
         Som.tocar(Som.CHEFE_MORRE);
 
@@ -264,6 +274,12 @@ public class BossEnemy extends Enemy {
 
     @Override
     public void render(Graphics2D g) {
+
+        // O desenho do ataque vem ANTES do sprite pra a chefe nunca ficar
+        // escondida atras dele — o jogador precisa ver onde mirar.
+        if (getSpellCardAtual() != null) {
+            getSpellCardAtual().render(g);
+        }
 
         desenharSprite(g);
         desenharBarraDeVidaDoChefe(g);

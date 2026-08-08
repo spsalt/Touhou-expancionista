@@ -47,6 +47,21 @@ public class Main extends JFrame implements Runnable, KeyListener {
     public static boolean enter = false;
     public static boolean esc = false;
 
+    /**
+     * ULTIMA LETRA/NUMERO DIGITADO, esperando ser lido.
+     *
+     * O resto do jogo trata teclado como ESTADO (a tecla esta apertada ou
+     * nao) porque e isso que movimento e tiro precisam. A maquina de
+     * Turing do PAPA precisa do contrario: um EVENTO, "a tecla K foi
+     * apertada agora", uma vez so por aperto.
+     *
+     * Por isso ela vive aqui como uma caixinha de uma posicao: o
+     * keyPressed deposita, quem le CONSOME com consumirTeclaDigitada() e
+     * a caixa volta a ficar vazia. Sem esse consumo, segurar a tecla
+     * preencheria a fita inteira sozinho.
+     */
+    private static char teclaDigitada = 0;
+
     /* =========================
             ARRAYLISTS
        ========================= */
@@ -70,7 +85,8 @@ public class Main extends JFrame implements Runnable, KeyListener {
     /** A cutscene sendo exibida agora (null fora do estado "Cutscene"). */
     static Cutscene cutsceneAtual;
 
-    static Musica musica;
+    /** Publica porque as fases trocam o tema (o PAPA tem o proprio). */
+    public static Musica musica;
 
     /* =========================
             CONFIGURATION
@@ -398,7 +414,9 @@ public class Main extends JFrame implements Runnable, KeyListener {
             return;
         }
 
-        if (hud.getBotaoGptExpansaoBounds().contains(mouseX, mouseY)) {
+        // Travado (maquina de Turing) o botao tambem nao responde — senao
+        // o clique seria uma brecha pra burlar a trava do teclado.
+        if (!player.isTravado() && hud.getBotaoGptExpansaoBounds().contains(mouseX, mouseY)) {
             player.usarGptExpansao();
         }
     }
@@ -497,6 +515,12 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
         fase = new phase1();
 
+        // A trilha volta pra da fase. Sem isso, morrer pro PAPA e comecar
+        // de novo deixaria o tema DELE tocando desde o estagio 1.
+        if (musica != null) {
+            musica.trocarFaixa(Config.getString("musica.arquivo", "audio/fase1.wav"));
+        }
+
         // O fundo nao e recriado (recarregar a foto custa caro); so volta
         // pro comeco do loop de rolagem.
         if (fundo != null) {
@@ -536,6 +560,39 @@ public class Main extends JFrame implements Runnable, KeyListener {
         }
 
         return (x1 - x2) / d;
+    }
+
+    /**
+     * O inimigo vivo mais proximo de (px, py), ou null se nao houver
+     * nenhum. Usado pelas balas teleguiadas do jogador.
+     *
+     * Compara a distancia AO QUADRADO em vez da distancia: evita uma raiz
+     * quadrada por inimigo por bala por tick, e a ordem e a mesma.
+     */
+    public static Enemy inimigoMaisProximo(double px, double py) {
+
+        Enemy melhor = null;
+        double menorDist2 = Double.MAX_VALUE;
+
+        for (int i = 0; i < enemies.size(); i++) {
+
+            Enemy e = enemies.get(i);
+
+            if (!e.isAlive()) {
+                continue;
+            }
+
+            double dx = e.getX() - px;
+            double dy = e.getY() - py;
+            double d2 = dx * dx + dy * dy;
+
+            if (d2 < menorDist2) {
+                menorDist2 = d2;
+                melhor = e;
+            }
+        }
+
+        return melhor;
     }
 
     /** true se o ponto esta fora do campo de jogo, considerando uma margem. */
@@ -692,7 +749,36 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
     @Override
     public void keyPressed(KeyEvent e) {
+
         setarTecla(e.getKeyCode(), true);
+
+        // Letras e digitos tambem viram evento de digitacao. Nao ha
+        // conflito com o resto: a maquina de Turing so le a caixinha
+        // enquanto esta ativa, e nela o jogador fica travado no lugar.
+        char c = Character.toUpperCase(e.getKeyChar());
+
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            teclaDigitada = c;
+        }
+    }
+
+    /**
+     * Pega a ultima tecla digitada e ESVAZIA a caixa.
+     *
+     * @return a letra/digito, ou 0 se nada foi digitado desde a ultima
+     *         chamada
+     */
+    public static char consumirTeclaDigitada() {
+
+        char c = teclaDigitada;
+        teclaDigitada = 0;
+
+        return c;
+    }
+
+    /** Joga fora o que estiver na caixa, sem ler. Usado ao (re)comecar algo. */
+    public static void limparTeclaDigitada() {
+        teclaDigitada = 0;
     }
 
     @Override

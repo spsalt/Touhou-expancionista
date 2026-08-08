@@ -239,10 +239,6 @@ public class XadrezBullet extends Bullet {
         // Piscada durante a pausa: avisa que ela esta prestes a se mexer.
         boolean prestesAMover = pausa > 0 && pausa < 20 && (pausa / 4) % 2 == 0;
 
-        // Casa do tabuleiro por baixo, pra leitura de "peca sobre tabuleiro".
-        g.setColor(new Color(20, 20, 30, 110));
-        g.fillRect((int) (x - casa / 2), (int) (y - casa / 2), (int) casa, (int) casa);
-
         g.setColor(prestesAMover ? Color.WHITE : cor);
 
         // O glifo e desenhado como TEXTO, entao o tamanho da fonte manda no
