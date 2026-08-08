@@ -60,6 +60,24 @@ public class BossEnemy extends Enemy {
     /** X do centro da deriva (meio do campo). */
     private final double centroX;
 
+    /**
+     * Relogio da deriva. Separado do 't' geral porque ele PARA quando a
+     * chefe esta plantada — usar o 't' faria ela dar um pulo lateral no
+     * instante em que voltasse a andar.
+     */
+    private int tDeriva = 0;
+
+    /**
+     * Quando true a chefe fica parada onde esta.
+     *
+     * Existe pros ataques cuja geometria sai DELA: se a origem das balas
+     * anda enquanto o padrao e desenhado, o padrao sai cisalhado e os
+     * corredores que deveriam existir se fecham. Ver
+     * SomasDeRiemannSpell, que planta a chefe durante a rajada e a
+     * solta no alivio.
+     */
+    private boolean paradoNoLugar = false;
+
     /* --- ajustes --- */
 
     private int ticksInvulnerabilidadeNaTroca;
@@ -145,7 +163,21 @@ public class BossEnemy extends Enemy {
         }
 
         y = alturaDeVoo;
-        x = centroX + Math.sin(2 * Math.PI * t / periodoDeriva) * amplitudeDeriva;
+
+        if (!paradoNoLugar) {
+            tDeriva++;
+        }
+
+        x = centroX + Math.sin(2 * Math.PI * tDeriva / periodoDeriva) * amplitudeDeriva;
+    }
+
+    /** Planta (ou solta) a chefe. Ver o campo paradoNoLugar. */
+    public void setParadoNoLugar(boolean paradoNoLugar) {
+        this.paradoNoLugar = paradoNoLugar;
+    }
+
+    public boolean isParadoNoLugar() {
+        return paradoNoLugar;
     }
 
     /**
@@ -201,6 +233,10 @@ public class BossEnemy extends Enemy {
         if (temSpellAtivo()) {
             spellCards[spellAtual].encerrar(this);
         }
+
+        // Rede de seguranca: um ataque que plantou a chefe e foi
+        // interrompido no meio a deixaria parada pro resto da luta.
+        paradoNoLugar = false;
 
         limparBalasInimigas();
         soltarItens(Config.getInt("chefe.itensPorSpellCard", 8));
