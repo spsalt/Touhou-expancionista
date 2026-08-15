@@ -1144,7 +1144,7 @@ public class Main extends JFrame implements Runnable, KeyListener {
         // enquanto esta ativa, e nela o jogador fica travado no lugar.
         char c = Character.toUpperCase(e.getKeyChar());
 
-        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')|| c == '_') {
             teclaDigitada = c;
         }
     }

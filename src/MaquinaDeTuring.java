@@ -42,7 +42,7 @@ import java.util.Map;
 public class MaquinaDeTuring {
 
     /** Fim de fita: o que existe onde a maquina nunca escreveu. */
-    public static final char BRANCO = '/';
+    public static final char BRANCO = '_';
 
     /** Um passo da execucao: o que ela leu, o que escreveu e onde estava. */
     public static class Passo {
