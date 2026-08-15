@@ -133,25 +133,72 @@ public class RedRecognaSpell extends SpellCard {
         crescimento = 0;
         giro = 0;
 
-        // O CHEFE CONTINUA INDO E VINDO durante este ataque.
+        // O PAPA VAI PRO MEIO DO SOL E FICA LA.
         //
-        // Ele foi plantado por um tempo, com medo de poluir a leitura. Mas
-        // o sol nao sai dele — o centro dos aneis e fixo no campo — entao
-        // a deriva dele nao mexe em nada do padrao. E ficar parado tinha
-        // um custo real: sem o chefe se movendo, o jogador nao tinha pra
-        // onde mirar e o ataque virava so esquiva.
-        chefe.setParadoNoLugar(false);
+        // Ele E o sol: o RED RECOGNA sai dele, nao de um ponto qualquer do
+        // campo. Com o chefe derivando la em cima e os aneis nascendo no
+        // meio, eram duas coisas soltas acontecendo ao mesmo tempo — e
+        // pior, mirar nele obrigava o jogador a tirar o olho do padrao.
+        //
+        // Agora o alvo e o centro do padrao, que e onde o olho ja esta.
+        // O sprite fica ATRAS do sol (a coroa e desenhada por cima dele,
+        // ver o render do BossEnemy) e aparece por entre as camadas
+        // translucidas: da pra ver que tem alguem ali dentro.
+        chefe.setX(centroX);
+        chefe.setY(centroY);
+        chefe.setParadoNoLugar(true);
 
         Som.tocar(Som.OPF_VEREDITO);
     }
 
+    /**
+     * O FIM DA LUTA: o sol arrebenta.
+     *
+     * Este e o ultimo spell card do ultimo chefe, entao "encerrar" aqui
+     * quer dizer que o jogo acabou. Uma unica explosao no chefe seria a
+     * mesma coisa que qualquer outra morte da fase — e este momento nao e
+     * qualquer outro.
+     *
+     * Sao varios estouros ESCALONADOS: um no centro do sol, um no chefe e
+     * mais alguns em anel em volta. Escalonados no espaco e nao no tempo
+     * porque a Explosao ja tem vida propria de 78 ticks; disparados juntos
+     * em pontos diferentes, eles se sobrepoem e leem como UM estouro
+     * grande e irregular, que e o que se quer. Um so, centralizado, leria
+     * como um circulo — bonito e pequeno.
+     */
     @Override
     public void encerrar(BossEnemy chefe) {
+
         chefe.setParadoNoLugar(false);
+
+
+        src.Explosao.vermelha(centroX, centroY);
+        src.Explosao.vermelha(chefe.getX(), chefe.getY());
+
+        int quantos = Math.max(0, Config.getInt("papa.recogna.estourosDoFim", 5));
+
+        for (int i = 0; i < quantos; i++) {
+
+            double a = 2 * Math.PI * i / Math.max(1, quantos);
+            double r = raioMaximoDoSimbolo * 0.85;
+
+            src.Explosao.vermelha(centroX + Math.cos(a) * r,
+                                  centroY + Math.sin(a) * r);
+        }
+
+        Som.tocar(Som.CHEFE_MORRE);
     }
 
     @Override
     public void atacar(int t, BossEnemy chefe) {
+
+        // Reancorado TODO TICK: o mover() do BossEnemy escreve o x dele a
+        // partir da senoide de deriva, entao mandar ele pro centro uma vez
+        // so no iniciar() nao segura — no frame seguinte ele voltaria pra
+        // formula. Plantar aqui e o unico jeito que sobrevive ao dono do
+        // movimento ser outra classe.
+        chefe.setX(centroX);
+        chefe.setY(centroY);
 
         crescimento = Math.min(1.0, t / (double) ticksParaCrescer);
 
@@ -207,8 +254,21 @@ public class RedRecognaSpell extends SpellCard {
             return;
         }
 
-        double raio = raioMaximoDoSimbolo * suavizar(crescimento)
-                    * Config.getDouble("papa.recogna.fatorDeDano", 0.42);
+        // O FOGO VAI ATE ONDE AS BALAS NASCEM. Nem um pixel a menos.
+        //
+        // Aqui estava o furo que tornava o ataque trivial, e nao era o
+        // padrao: era GEOMETRIA. O fogo cobria 47 px do centro e as balas
+        // nasciam a partir de 70 px, indo PRA FORA. Sobrava uma
+        // ROSQUINHA entre os dois — fora do fogo, dentro do ponto de
+        // nascimento — onde nenhuma bala passava nunca. Bastava parar ali
+        // e esperar o cronometro: 61 pontos do campo eram 100% seguros
+        // por 40 segundos, medidos.
+        //
+        // Amarrar o raio do fogo ao raioDeNascimento fecha a rosquinha e
+        // se mantem fechado sozinho: mexer em um move o outro junto. Com
+        // um fator solto, qualquer ajuste futuro reabriria o buraco sem
+        // ninguem perceber.
+        double raio = raioDeNascimentoAgora() + Config.getDouble("papa.recogna.folgaDoFogo", 6);
 
         double dist = Main.getDist(centroX, centroY,
                                    Main.player.getX(), Main.player.getY());
@@ -277,6 +337,16 @@ public class RedRecognaSpell extends SpellCard {
     }
 
     /**
+     * De onde as balas estao nascendo AGORA (o raio cresce com o sol).
+     *
+     * Existe pra o fogo e o nascimento das balas lerem o MESMO numero —
+     * ver queimarQuemEncostar.
+     */
+    private double raioDeNascimentoAgora() {
+        return raioDeNascimento + raioMaximoDoSimbolo * crescimento * 0.55;
+    }
+
+    /**
      * Um anel completo de balas, saindo do simbolo.
      *
      * Elas nascem NA BORDA do sol e nao no centro dele: nascendo no meio,
@@ -286,7 +356,7 @@ public class RedRecognaSpell extends SpellCard {
     private void soltarAnel() {
 
         // O sol cresce, e o anel nasce sempre encostado nele.
-        double r = raioDeNascimento + raioMaximoDoSimbolo * crescimento * 0.55;
+        double r = raioDeNascimentoAgora();
 
         for (int i = 0; i < balasPorAnel; i++) {
 
@@ -333,6 +403,33 @@ public class RedRecognaSpell extends SpellCard {
 
         desenharCoroa(g, raio * pulso);
         desenharSimbolo(g, raio * pulso);
+        desenharBordaQuente(g);
+    }
+
+    /**
+     * O CONTORNO DO FOGO.
+     *
+     * Agora que a area quente vai ate onde as balas nascem, ela e bem
+     * maior que o desenho do sol — e o jogador nao teria como saber onde
+     * ela termina. Um anel tracejado pulsando resolve: a regra passa a ser
+     * visivel, e morrer ali vira erro seu e nao surpresa do jogo.
+     */
+    private void desenharBordaQuente(Graphics2D g) {
+
+        double raio = raioDeNascimentoAgora() + Config.getDouble("papa.recogna.folgaDoFogo", 6);
+
+        double pulso = 0.5 + 0.5 * Math.sin(giro * 5);
+
+        Stroke anterior = g.getStroke();
+
+        g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                                    10f, new float[] { 9f, 11f }, (float) (giro * 30)));
+
+        g.setColor(new Color(255, 170, 120, (int) (80 + 70 * pulso)));
+        g.drawOval((int) (centroX - raio), (int) (centroY - raio),
+                   (int) (raio * 2), (int) (raio * 2));
+
+        g.setStroke(anterior);
     }
 
     /** Curva de crescimento: acelera no comeco e assenta no fim. */

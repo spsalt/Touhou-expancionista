@@ -34,6 +34,21 @@ public class Claytonling extends Enemy {
 
     /** O que ele esta fazendo agora. */
     private enum Estado {
+        /**
+         * SAINDO DO CLAYTON rumo ao posto dele na parede.
+         *
+         * So os claytonlings de parede passam por aqui. Eles nasciam
+         * DIRETO na lateral, e o efeito era errado: apareciam do nada num
+         * canto da tela, sem ligacao nenhuma com o chefe. O spell card e
+         * sobre ele SE MULTIPLICAR — se a copia nao sai dele, nao ha
+         * multiplicacao, ha spawn.
+         *
+         * Agora todos saem do mesmo lugar, do corpo do Clayton; a
+         * diferenca e pra onde vao depois.
+         */
+        POSICIONANDO,
+        /** Chegou no posto e fica la, so chutando. */
+        NO_POSTO,
         /** Ainda ajustando a rota — da pra ele te seguir se voce andar. */
         APROXIMANDO,
         /** Rota TRAVADA: vai reto e nao corrige mais. E aqui que se desvia. */
@@ -94,6 +109,23 @@ public class Claytonling extends Enemy {
         this(x, y, false);
     }
 
+    /** Destino do claytonling de parede. Ignorado pelos outros. */
+    private double destinoX, destinoY;
+
+    /**
+     * Claytonling DE PAREDE: nasce em (x,y) — o corpo do Clayton — e vai
+     * ocupar o posto em (destinoX, destinoY).
+     */
+    public Claytonling(double x, double y, boolean chutador,
+                       double destinoX, double destinoY) {
+
+        this(x, y, chutador);
+
+        this.destinoX = destinoX;
+        this.destinoY = destinoY;
+        this.estado = Estado.POSICIONANDO;
+    }
+
     public Claytonling(double x, double y, boolean chutador) {
 
         super(x, y,
@@ -151,7 +183,15 @@ public class Claytonling extends Enemy {
      */
     private void talvezChutar() {
 
-        if (!chutador || estado != Estado.APROXIMANDO || Main.player == null) {
+        if (!chutador || Main.player == null) {
+            return;
+        }
+
+        // Chuta enquanto se aproxima OU enquanto esta no posto da parede.
+        // Na investida nao: la o corpo dele ja e o ataque, e cobrar as
+        // duas coisas ao mesmo tempo do mesmo bicho nao daria aviso
+        // separado pra nenhuma das duas.
+        if (estado != Estado.APROXIMANDO && estado != Estado.NO_POSTO) {
             return;
         }
 
@@ -208,6 +248,36 @@ public class Claytonling extends Enemy {
      */
     @Override
     protected void mover() {
+
+        // A CORRIDA ATE A PAREDE. Enquanto nao chegou, ele so viaja: nao
+        // persegue, nao investe e nao desiste.
+        if (estado == Estado.POSICIONANDO) {
+
+            double dx = destinoX - x;
+            double dy = destinoY - y;
+            double d = Math.sqrt(dx * dx + dy * dy);
+
+            double v = Config.getDouble("clayton.claytonling.velocidadeAtePosto", 7.0);
+
+            if (d <= v) {
+                x = destinoX;
+                y = destinoY;
+                estado = Estado.NO_POSTO;
+                return;
+            }
+
+            x += dx / d * v;
+            y += dy / d * v;
+
+            return;
+        }
+
+        // NO POSTO: fica parado. O corpo dele continua machucando e ele
+        // continua chutando — o que ele NAO faz e perseguir, senao ele
+        // abandonaria a lateral e viraria mais um da matilha do meio.
+        if (estado == Estado.NO_POSTO) {
+            return;
+        }
 
         if (estado == Estado.FUGINDO) {
             x += fugaX * velocidadeFuga;

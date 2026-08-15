@@ -146,7 +146,22 @@ public class LojaDoPerea {
         switch (p) {
 
             case NIVEL:
-                return Main.player.comprarNivel();
+
+                // SOBE ATE O TETO DE UMA VEZ, e nao um degrau por compra.
+                //
+                // Vender degrau tinha um efeito perverso: o segundo custava
+                // mais que o primeiro, entao quem chegava com pouco
+                // dinheiro comprava metade do poder e ficava sem nada pros
+                // itens. Um preco unico pelo pacote inteiro deixa a
+                // decisao limpa — ou voce leva o tiro no maximo, ou leva as
+                // ferramentas.
+                boolean subiu = false;
+
+                while (Main.player.comprarNivel()) {
+                    subiu = true;
+                }
+
+                return subiu;
 
             case CULTURA_MAKER:
                 Main.player.setCulturaMaker(true);
@@ -190,12 +205,14 @@ public class LojaDoPerea {
         switch (p) {
 
             case NIVEL:
-                // Sobe a cada nivel ja comprado: o primeiro upgrade e
-                // acessivel, o segundo e uma decisao de verdade contra os
-                // outros itens.
-                int comprados = Math.max(0, Main.player.getLevel() - Main.player.getTetoPorItem());
-                return Config.getInt("perea.preco.nivel", 14)
-                     + comprados * Config.getInt("perea.preco.nivelAumento", 8);
+                // Preco unico pelo PACOTE: leva do nivel atual ate o teto.
+                //
+                // Vender degrau por degrau tinha um efeito perverso — o
+                // segundo custava mais que o primeiro, entao quem chegava
+                // com pouco dinheiro comprava metade do poder e ficava sem
+                // nada pros itens. Um preco so deixa a decisao limpa: ou o
+                // tiro no maximo, ou as ferramentas.
+                return Config.getInt("perea.preco.nivel", 15);
 
             case CULTURA_MAKER:
                 return Config.getInt("perea.preco.culturaMaker", 20);
@@ -228,7 +245,7 @@ public class LojaDoPerea {
     private String nomeDe(Produto p) {
 
         switch (p) {
-            case NIVEL:         return "SUBIR DE NÍVEL";
+            case NIVEL:         return "NÍVEL MÁXIMO";
             case CULTURA_MAKER: return "CULTURA MAKER";
             case OLHO_LASER:    return "OLHO LASER DO PEREA";
             case AGRICULTURA:   return "AGRICULTURA DIGITAL";
@@ -241,7 +258,8 @@ public class LojaDoPerea {
         switch (p) {
 
             case NIVEL:
-                return "nível " + (Main.player.getLevel() + 1)
+                return "vai do " + Main.player.getLevel() + " ao "
+                     + Main.player.getNivelMaximo()
                      + " — item só te leva até o " + Main.player.getTetoPorItem();
 
             case CULTURA_MAKER:

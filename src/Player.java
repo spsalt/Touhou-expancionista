@@ -762,13 +762,16 @@ public class Player {
 
             double raio = base * (0.55 + i * 0.20) * pulso * (0.75 + 0.25 * ameacaAtual);
 
-            int alpha = (int) (ameacaAtual * (30 + 45 * (4 - i)));
+            // Alfas reduzidos (era 30 + 45*i, teto 190): a aura tapava as
+            // balas que ela mesma esta avisando. Ela e um AVISO, e aviso
+            // que esconde a ameaca trabalha contra si.
+            int alpha = (int) (ameacaAtual * (14 + 20 * (4 - i)));
 
             if (alpha <= 0) {
                 continue;
             }
 
-            g.setColor(new Color(90, 150, 255, Math.min(190, alpha)));
+            g.setColor(new Color(90, 150, 255, Math.min(85, alpha)));
             g.fillOval((int) (x - raio), (int) (y - raio),
                        (int) (raio * 2), (int) (raio * 2));
         }
@@ -777,7 +780,7 @@ public class Player {
         // mancha azul quando estiver fraca.
         double raio = base * pulso;
 
-        g.setColor(new Color(170, 210, 255, (int) (Math.min(1, ameacaAtual) * 200)));
+        g.setColor(new Color(170, 210, 255, (int) (Math.min(1, ameacaAtual) * 110)));
         g.drawOval((int) (x - raio), (int) (y - raio), (int) (raio * 2), (int) (raio * 2));
     }
 
@@ -1328,21 +1331,44 @@ public class Player {
         // dizendo a verdade sobre onde ela termina.
         double raioHalo = radius * Config.getDouble("jogador.escalaDoHaloDaAlma", 4.2) * pulso;
 
+        // 0) ANEL PRETO POR TRAS DE TUDO.
+        //
+        // E o que mais ajudou a destacar. O roxo do halo competia com o
+        // cenario e com as balas rosas/vermelhas por MATIZ, e matiz e a
+        // ultima coisa que o olho separa numa tela cheia. Um contorno
+        // escuro separa por LUMINANCIA — funciona em qualquer fundo, do
+        // corredor claro a sala 7 vermelha.
+        double raioSombra = raioHalo * 0.72;
+
+        g.setColor(new Color(0, 0, 0, 130));
+        g.fillOval((int) (x - raioSombra), (int) (y - raioSombra),
+                   (int) (raioSombra * 2), (int) (raioSombra * 2));
+
         // 1) brilho em camadas, do mais largo e fraco ao mais apertado.
+        //    Alfas subiram (era 20 + i*16): a alma some justamente quando a
+        //    tela enche, que e quando ela mais precisa aparecer.
         for (int i = 4; i >= 1; i--) {
 
             double r = raioHalo * i / 4.0;
 
-            g.setColor(new Color(168, 92, 255, 20 + (4 - i) * 16));
+            g.setColor(new Color(190, 120, 255, 34 + (4 - i) * 26));
             g.fillOval((int) (x - r), (int) (y - r), (int) (r * 2), (int) (r * 2));
         }
 
         // 2) anel externo girando: e o detalhe que faz ela parecer uma
         // ALMA e nao um pontinho de mira.
         java.awt.Stroke anterior = g.getStroke();
-        g.setStroke(new java.awt.BasicStroke(1.4f));
 
-        g.setColor(new Color(210, 150, 255, 150));
+        // Anel duplo: um preto grosso por baixo e o claro por cima. O
+        // mesmo motivo da sombra — contorno escuro e o que garante que o
+        // anel exista sobre qualquer coisa.
+        g.setStroke(new java.awt.BasicStroke(4.5f));
+        g.setColor(new Color(20, 0, 40, 190));
+        g.drawOval((int) (x - raioHalo * 0.62), (int) (y - raioHalo * 0.62),
+                   (int) (raioHalo * 1.24), (int) (raioHalo * 1.24));
+
+        g.setStroke(new java.awt.BasicStroke(2.2f));
+        g.setColor(new Color(240, 205, 255, 235));
         g.drawOval((int) (x - raioHalo * 0.62), (int) (y - raioHalo * 0.62),
                    (int) (raioHalo * 1.24), (int) (raioHalo * 1.24));
 
@@ -1358,14 +1384,27 @@ public class Player {
 
             double rf = raioHalo * 0.16;
 
-            g.setColor(new Color(235, 195, 255, 210));
+            g.setColor(new Color(30, 5, 50, 200));
+            g.fillOval((int) (fx - rf - 1), (int) (fy - rf - 1),
+                       (int) (rf * 2 + 2), (int) (rf * 2 + 2));
+
+            g.setColor(new Color(255, 235, 255, 245));
             g.fillOval((int) (fx - rf), (int) (fy - rf), (int) (rf * 2), (int) (rf * 2));
         }
 
         g.setStroke(anterior);
 
         // 4) NUCLEO — do tamanho real da hitbox, e nada alem disso.
-        g.setColor(new Color(150, 60, 235));
+        //
+        // Ele ganhou um contorno preto de 1 px em volta (desenhado como um
+        // circulo um pouco maior por baixo). Com hitbox de raio 2, um
+        // pixel de contorno e a diferenca entre ver e nao ver o ponto que
+        // de fato mata voce.
+        g.setColor(new Color(10, 0, 20, 230));
+        g.fillOval((int) (x - radius - 2), (int) (y - radius - 2),
+                   (int) (radius * 2 + 4), (int) (radius * 2 + 4));
+
+        g.setColor(new Color(255, 255, 255));
         g.fillOval((int) (x - radius), (int) (y - radius),
                    (int) (radius * 2), (int) (radius * 2));
 

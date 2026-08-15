@@ -365,7 +365,7 @@ public class phase1 {
 
             case 2:
             case 3:
-                faixa = temaDeChefe(Config.getString("adriana.musica", "audio/kim_jung_goon.wav"));
+                faixa = temaDeChefe(Config.getString("adriana.musica", "audio/kim_jung.wav"));
                 break;
 
             case 4:
@@ -374,8 +374,18 @@ public class phase1 {
                 break;
 
             case 6:
-            case 7:
                 faixa = temaDeChefe(Config.getString("papa.musica", "audio/flower_man.wav"));
+                break;
+
+            // A FORMA IA TEM TEMA PROPRIO.
+            //
+            // E o unico chefe do jogo com duas trilhas, e faz sentido que
+            // seja ele: a transformacao do PAPA nao e "o mesmo inimigo com
+            // sprite novo" como a da Adriana e a do Clayton — a tela fica
+            // branca, o virus toma o corpo por inteiro e o que sobra e
+            // outra coisa. Manter a mesma musica dizia o contrario disso.
+            case 7:
+                faixa = temaDeChefe(Config.getString("papa.musicaIA", "audio/black_knife.wav"));
                 break;
 
             default:

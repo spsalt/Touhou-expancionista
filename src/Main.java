@@ -126,6 +126,9 @@ public class Main extends JFrame implements Runnable, KeyListener {
     /** A lojinha do Perea. Abre uma vez, entre o Clayton e o PAPA. */
     public static LojaDoPerea loja;
 
+    /** A sequencia final: a foto no uba e o agradecimento. */
+    public static Creditos creditos;
+
     /**
      * Quantos continues o jogador gastou nesta partida.
      *
@@ -352,6 +355,16 @@ public class Main extends JFrame implements Runnable, KeyListener {
             // continuam onde estavam, a vista do que matou o jogador.
             menuDeContinue.tick();
 
+        } else if (gameState.equals("Creditos")) {
+
+            creditos.tick();
+
+            if (creditos.acabou()) {
+                reiniciarPartida();
+                musica.parar();
+                gameState = "Menu";
+            }
+
         } else if (gameState.equals("Loja")) {
 
             // Mesma ideia do Continue: o jogo congela e so a loja
@@ -462,7 +475,12 @@ public class Main extends JFrame implements Runnable, KeyListener {
         agriculturas.removeIf(a -> !a.isAlive());
 
         if (fase.acabou()) {
-            gameState = "Vitoria";
+
+            // Acabou a historia: em vez da cartela de "FASE LIMPA", a foto
+            // do pessoal no uba e os numeros da partida (ver Creditos).
+            // A tela antiga dizia que voce venceu; esta mostra por que
+            // valeu a pena.
+            mostrarCreditos();
         }
     }
 
@@ -547,6 +565,19 @@ public class Main extends JFrame implements Runnable, KeyListener {
      * em que isso acontece fora do pause — e proposital, porque comprar
      * upgrade enquanto bala voa nao seria uma decisao, seria um acidente.
      */
+    /**
+     * Fecha o jogo: a foto no uba e o agradecimento.
+     *
+     * Substitui a tela de "FASE LIMPA". Aquela dizia que voce venceu; esta
+     * mostra POR QUE valeu a pena — o pessoal reunido — e devolve os
+     * numeros da sua partida.
+     */
+    public static void mostrarCreditos() {
+
+        creditos = new Creditos();
+        gameState = "Creditos";
+    }
+
     public static void abrirLoja() {
 
         loja.reiniciar();
@@ -1001,7 +1032,17 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
                 menuDeContinue.render(g);
 
-            } else if (gameState.equals("Loja")) {
+            } else if (gameState.equals("Creditos")) {
+
+            creditos.tick();
+
+            if (creditos.acabou()) {
+                reiniciarPartida();
+                musica.parar();
+                gameState = "Menu";
+            }
+
+        } else if (gameState.equals("Loja")) {
 
                 loja.render(g);
 

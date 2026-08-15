@@ -4,7 +4,6 @@ import src.Config;
 import src.Main;
 import src.Som;
 import src.bulletTypes.BolaBullet;
-import src.enemyTypes.AnticodigoEnemy;
 import src.enemyTypes.BossEnemy;
 import src.enemyTypes.Claytonling;
 
@@ -48,6 +47,9 @@ public class ClaytonlingsSpell extends SpellCard {
     /** De quantos em quantos claytonlings sai um chutador de bola. */
     private final int umChutadorACada;
 
+    /** Quantos claytonlings nascem de uma vez colados em cada parede. */
+    private final int porLadoNaParede;
+
     /** Alterna o lado de nascimento: nunca as duas na mesma parede. */
     private boolean proximaPelaEsquerda = true;
 
@@ -64,6 +66,7 @@ public class ClaytonlingsSpell extends SpellCard {
         this.cadenciaDasCriaturas = Math.max(30, Config.getInt("clayton.anticodigo.cadencia", 260));
         this.limiteDeCriaturas    = Math.max(1, Config.getInt("clayton.anticodigo.limiteNaTela", 2));
         this.umChutadorACada      = Math.max(1, Config.getInt("clayton.claytonling.umChutadorACada", 2));
+        this.porLadoNaParede      = Math.max(1, Config.getInt("clayton.claytonling.porLadoNaParede", 3));
     }
 
     @Override
@@ -75,7 +78,7 @@ public class ClaytonlingsSpell extends SpellCard {
         // primeira cadencia: ela e metade da ideia do spell card, e o
         // jogador precisa ver as duas ameacas desde o comeco pra entender
         // que tem que alternar entre elas.
-        soltarCriatura();
+        soltarCriatura(chefe);
     }
 
     @Override
@@ -86,7 +89,7 @@ public class ClaytonlingsSpell extends SpellCard {
         // problema que os cachorros da Adriana ja deram uma vez.
         for (int i = 0; i < Main.enemies.size(); i++) {
 
-            if (Main.enemies.get(i) instanceof AnticodigoEnemy) {
+            if (Main.enemies.get(i) instanceof Claytonling) {
                 Main.enemies.get(i).setAlive(false);
             }
         }
@@ -96,7 +99,7 @@ public class ClaytonlingsSpell extends SpellCard {
     public void atacar(int t, BossEnemy chefe) {
 
         if (t % cadenciaDasCriaturas == 0 && t > 0) {
-            soltarCriatura();
+            soltarCriatura(chefe);
         }
 
         // OS CHUTOES, DO COMECO AO FIM DO ATAQUE.
@@ -194,18 +197,51 @@ public class ClaytonlingsSpell extends SpellCard {
      * colada no topo (a bola cairia quase reta, sem arco nenhum) nem
      * embaixo (o arco nao teria altura pra subir antes de cair).
      */
-    private void soltarCriatura() {
+    private void soltarCriatura(BossEnemy chefeDaVez) {
 
         if (contarCriaturas() >= limiteDeCriaturas) {
             return;
         }
+
+        Som.tocar(Som.CLAYTONLING);
 
         double topo  = Main.CAMPO_Y + Main.CAMPO_H * Config.getDouble("clayton.anticodigo.faixaTopoRelY", 0.22);
         double baixo = Main.CAMPO_Y + Main.CAMPO_H * Config.getDouble("clayton.anticodigo.faixaBaixoRelY", 0.48);
 
         double y = topo + Math.random() * (baixo - topo);
 
-        Main.enemies.add(new AnticodigoEnemy(y, proximaPelaEsquerda));
+        // AGORA SAO CLAYTONLINGS, e nao mais as criaturas verdes.
+        //
+        // As criaturas eram um bicho novo so pra esse ataque, com arte
+        // propria e regra propria — muito peso pra uma coisa que aparece
+        // uma vez no jogo inteiro. E, pior, elas nao pareciam ter nada a
+        // ver com o Clayton: o spell card e sobre ele se multiplicar, e
+        // metade da tela era ocupada por outra coisa.
+        //
+        // Claytonlings CHUTADORES nascendo colados na parede fazem o mesmo
+        // papel (bola caindo de cima, do lado) usando uma peca que o
+        // jogador ja conhece — e reforcam a piada do ataque em vez de
+        // competir com ela.
+        double x = proximaPelaEsquerda
+                 ? Main.CAMPO_X + Config.getDouble("clayton.claytonling.margemDaParede", 40)
+                 : Main.CAMPO_X + Main.CAMPO_W
+                   - Config.getDouble("clayton.claytonling.margemDaParede", 40);
+
+        for (int i = 0; i < porLadoNaParede; i++) {
+
+            // Espalhados na vertical: empilhados no mesmo ponto, os
+            // chutes sairiam todos da mesma altura e viravam um so.
+            double yy = y + i * Config.getDouble("clayton.claytonling.espacoNaParede", 54);
+
+            // NASCEM NO CLAYTON e correm pro posto na parede.
+            //
+            // Antes eles apareciam direto na lateral, e o efeito era
+            // errado: surgiam do nada num canto, sem ligacao com o chefe.
+            // Este spell card e sobre ele SE MULTIPLICAR — se a copia nao
+            // sai dele, nao ha multiplicacao, ha spawn.
+            Main.enemies.add(new Claytonling(chefeDaVez.getX(), chefeDaVez.getY(),
+                                             true, x, yy));
+        }
 
         proximaPelaEsquerda = !proximaPelaEsquerda;
     }
@@ -215,7 +251,7 @@ public class ClaytonlingsSpell extends SpellCard {
         int total = 0;
 
         for (int i = 0; i < Main.enemies.size(); i++) {
-            if (Main.enemies.get(i) instanceof AnticodigoEnemy) {
+            if (Main.enemies.get(i) instanceof Claytonling) {
                 total++;
             }
         }

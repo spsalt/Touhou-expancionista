@@ -18,12 +18,20 @@ import src.enemyTypes.spellCards.TuringSpell;
  * A luta tem DUAS FORMAS, como as dos outros chefes:
  *
  *   FORMA BASE (linhas 58 a 68)
- *     - ⚑ Tratado de Nao-Proliferacao  (bandeiras de paises sorteados)
+ *     - ⚑ Tratado de Proliferacao      (bandeiras de paises sorteados)
  *     - ⊢ Maquina de Turing            (o jogador vira o cabecote da fita)
+ *     - ⊛ Optimum Path Forest          (o classificador do proprio Papa)
  *
  *   FORMA PAPA IA (linhas 69 a 72, depois da tela ficar branca) — o
  *   PAPA com a infeccao NO MAXIMO, nao o virus fora dele
- *     - ⊛ Optimum Path Forest          (o classificador do proprio Papa)
+ *     - ⬖ Seguidores do IEEE           (corredor + leques das laterais)
+ *     - ☀ RED RECOGNA                  (o sol; quando ele cai, acaba tudo)
+ *
+ * A MAQUINA DE TURING fica na forma BASE, entre as bandeiras e o OPF. E o
+ * lugar certo pra ela: e o unico ataque em que o jogador para de atirar e
+ * passa a resolver um problema, e isso pede o PAPA ainda humano — o
+ * professor de computacao teorica. Depois da transformacao nao ha mais
+ * professor nenhum pra dar exercicio, so a IA atacando.
  *
  * A escolha dos ataques segue o roteiro de perto. O primeiro vem da fala
  * "ja sei onde proliferaremos nosso virus depois de te derrotar" (linha
@@ -50,7 +58,8 @@ public class Papa extends BossEnemy {
         return new Papa(
             new SpellCard[] {
                 new BandeirasSpell(),
-                new TuringSpell()
+                new TuringSpell(),
+                new OptimumPathForestSpell()
             },
             Config.getString("papa.sprite", "sprites/bosses/papa-base.png"),
             Config.getDouble("papa.escalaSprite", 3.4)
@@ -72,8 +81,7 @@ public class Papa extends BossEnemy {
         return new Papa(
             new SpellCard[] {
                 new SeguidoresDoIeeeSpell(),
-                new RedRecognaSpell(),
-                new OptimumPathForestSpell()
+                new RedRecognaSpell()
             },
             Config.getString("papa.spriteIA", "sprites/bosses/papa-IA_MALIGNA.png"),
             Config.getDouble("papa.escalaSpriteIA", 4.0)

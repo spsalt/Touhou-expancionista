@@ -96,6 +96,21 @@ public class AscensaoDaArmadura {
         if (Main.musica != null) {
             Main.musica.trocarFaixa(Config.getString("ascensao.musica", "audio/ascension.wav"), false);
         }
+
+        // A TELA FICA LIMPA PRA CERIMONIA.
+        //
+        // Bala inimiga sobrando e inimigo perdido na tela transformavam o
+        // momento numa cena acontecendo POR TRAS de um combate. Nao ha
+        // nada pra desviar aqui — a fase esta travada — entao o que sobrar
+        // e so ruido visual competindo com a energia roxa.
+        for (int i = 0; i < Main.bullets.size(); i++) {
+            if (Main.bullets.get(i).isHitPlayer()) {
+                Main.bullets.get(i).setAlive(false);
+            }
+        }
+
+        Main.enemies.clear();
+        Main.destrocos.clear();
     }
 
     /* =========================
@@ -228,6 +243,80 @@ public class AscensaoDaArmadura {
             desenharFiapos(g);
             desenharAuraCrescendo(g);
         }
+
+        desenharGrito(g);
+    }
+
+    /**
+     * O "ESPANDAAAAA!!!!!!!!!" atravessando a tela.
+     *
+     * Ele saiu da caixa de dialogo por um motivo simples: caixa de fala e
+     * onde se PASSA INFORMACAO, e essa linha nao e informacao, e um grito.
+     * Numa caixa, ela vinha com nome do personagem, letrinha por letrinha
+     * e um "aperte Z" implicito — o mesmo tratamento de "bão prof, cê
+     * gostou?". Solta na tela, em corpo enorme, ela e o que e.
+     *
+     * ENTRA RAPIDO E SAI RAPIDO. Um fade lento pareceria legenda; o corte
+     * curto nos dois lados faz ler como impacto. E ela aparece DEPOIS do
+     * atraso, junto com os primeiros fiapos — o grito e o que chama a
+     * energia, entao vir antes dela inverteria a causa.
+     */
+    private void desenharGrito(Graphics2D g) {
+
+        int inicio = atraso;
+        int entra  = Config.getInt("ascensao.gritoEntra", 10);
+        int fica   = Config.getInt("ascensao.gritoFica", 95);
+        int sai    = Config.getInt("ascensao.gritoSai", 22);
+
+        int dt = t - inicio;
+
+        if (dt < 0 || dt > entra + fica + sai) {
+            return;
+        }
+
+        double alpha;
+
+        if (dt < entra) {
+            alpha = dt / (double) Math.max(1, entra);
+        } else if (dt < entra + fica) {
+            alpha = 1;
+        } else {
+            alpha = 1 - (dt - entra - fica) / (double) Math.max(1, sai);
+        }
+
+        alpha = Math.max(0, Math.min(1, alpha));
+
+        // Cresce um tiquinho enquanto esta na tela: um texto imovel de
+        // corpo 54 parece um cartaz colado; crescendo devagar, ele empurra.
+        double escala = 0.94 + 0.10 * Math.min(1, dt / (double) (entra + fica));
+
+        String texto = Config.getString("ascensao.grito", "ESPANDAAAAA!!!!!!!!!");
+
+        g.setFont(new java.awt.Font("Monospaced", java.awt.Font.BOLD,
+                                    (int) (Config.getInt("ascensao.tamanhoDoGrito", 54) * escala)));
+
+        java.awt.FontMetrics fm = g.getFontMetrics();
+
+        int larg = fm.stringWidth(texto);
+        int cx = Main.CAMPO_X + Main.CAMPO_W / 2 - larg / 2;
+        int cy = Main.CAMPO_Y + (int) (Main.CAMPO_H * 0.34);
+
+        int a = (int) (255 * alpha);
+
+        // Contorno preto em oito direcoes: o grito passa por cima da
+        // energia roxa, do veu e do que mais estiver na tela.
+        g.setColor(new Color(0, 0, 0, a));
+
+        for (int dx = -3; dx <= 3; dx += 3) {
+            for (int dy = -3; dy <= 3; dy += 3) {
+                if (dx != 0 || dy != 0) {
+                    g.drawString(texto, cx + dx, cy + dy);
+                }
+            }
+        }
+
+        g.setColor(new Color(235, 205, 255, a));
+        g.drawString(texto, cx, cy);
     }
 
     /**

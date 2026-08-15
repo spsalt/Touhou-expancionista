@@ -131,6 +131,9 @@ for a,t in arvores.items():
 # java.awt.*" cobre tudo do pacote, entao o teste respeita curinga.
 JDK = {
  'Color':'java.awt','Font':'java.awt','Graphics2D':'java.awt','Rectangle':'java.awt',
+ # FontMetrics entrou depois: faltava ele na lista e um "cannot find
+ # symbol: class FontMetrics" passou batido no Hud.
+ 'FontMetrics':'java.awt','Shape':'java.awt','Polygon':'java.awt',
  'BasicStroke':'java.awt','Stroke':'java.awt','Composite':'java.awt',
  'AlphaComposite':'java.awt','RenderingHints':'java.awt','Point2D':'java.awt.geom',
  'AffineTransform':'java.awt.geom','BufferedImage':'java.awt.image',

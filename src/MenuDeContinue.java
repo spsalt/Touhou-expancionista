@@ -33,15 +33,47 @@ public class MenuDeContinue {
     /** Cronometro proprio, so pro brilho pulsar. */
     private int t = 0;
 
+    /**
+     * Ticks em que a tela ainda IGNORA o teclado.
+     *
+     * Voce morre no meio de uma parede de bala, ou seja, com o dedo
+     * grudado no Z atirando. A tela de continue aparece nesse exato
+     * instante e le o mesmo Z como resposta — entao ela era respondida
+     * antes de o jogador terminar de ler a pergunta, e a escolha mais
+     * importante da partida virava um acidente.
+     *
+     * Uma tela que so aceita resposta depois de um tempo nao e uma tela
+     * mais lenta: e a diferenca entre perguntar e registrar um reflexo.
+     */
+    private int carencia = 0;
+
     /** Zera a selecao. Chamado toda vez que a tela aparece. */
     public void reiniciar() {
         selecionada = 1;
         t = 0;
+        carencia = Math.max(0, Config.getInt("continue.ticksDeCarencia", 45));
     }
 
     public void tick() {
 
         t++;
+
+        // A CARENCIA. Enquanto ela corre, nada de teclado.
+        //
+        // As flags sao ZERADAS mesmo assim: sem isso, o Z que o jogador
+        // estava segurando quando morreu ficaria pendurado e seria lido
+        // no primeiro frame livre — o atraso nao teria servido de nada.
+        if (carencia > 0) {
+
+            carencia--;
+
+            Main.up = false;
+            Main.down = false;
+            Main.enter = false;
+            Main.z = false;
+
+            return;
+        }
 
         // As flags sao zeradas na hora de usar, senao um toque anda
         // varias casas (o tick roda 60x por segundo). Mesma solucao do Menu.
@@ -87,6 +119,25 @@ public class MenuDeContinue {
 
         g.setColor(new Color(0, 0, 0, 190));
         g.fillRect(0, 0, Main.WIDTH, Main.HEIGHT);
+
+        // Aviso de que a tela ainda nao responde: uma barrinha enchendo.
+        // Sem ela, os primeiros frames pareceriam a tela travada — o
+        // jogador aperta, nada acontece, e ele conclui que bugou.
+        if (carencia > 0) {
+
+            int total = Math.max(1, Config.getInt("continue.ticksDeCarencia", 45));
+            double f = 1 - carencia / (double) total;
+
+            int larg = 220;
+            int x0 = Main.CAMPO_X + Main.CAMPO_W / 2 - larg / 2;
+            int y0 = Main.CAMPO_Y + Main.CAMPO_H / 2 + 130;
+
+            g.setColor(new Color(60, 55, 75));
+            g.fillRect(x0, y0, larg, 4);
+
+            g.setColor(new Color(200, 190, 220));
+            g.fillRect(x0, y0, (int) (larg * f), 4);
+        }
 
         int cx = Main.CAMPO_X + Main.CAMPO_W / 2;
         int cy = Main.CAMPO_Y + Main.CAMPO_H / 2;
