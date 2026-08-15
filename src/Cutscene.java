@@ -46,6 +46,42 @@ public class Cutscene {
         FALA
     }
 
+    /**
+     * Coisas que uma fala pode mandar o JOGO fazer.
+     *
+     * Existe porque o dialogo nao para mais o jogo: a cena e o mundo
+     * acontecem juntos, e precisam se sincronizar. Sem isso a chefe
+     * aparecia no primeiro frame da conversa — inclusive durante a parte
+     * do SANTO JAVA, em que ela nem devia estar na tela — e a
+     * transformacao acontecia no retrato mas nao no sprite em jogo.
+     *
+     * Quem consome e a fase (ver phase1.chefeEntraSeChamado).
+     */
+    public enum Gatilho {
+        NENHUM,
+        /** A chefe entra em cena agora, voando. */
+        CHEFE_ENTRA,
+        /** A chefe troca pra forma seguinte agora. */
+        CHEFE_TRANSFORMA,
+        /**
+         * O jogador ganha a armadura AGORA — no "ESPANDAAAAA", e nao
+         * antes. Sem isso ele ja entrava no estagio 2 em modo expansivo,
+         * com o retrato trocado e a bomba destravada, e a cena inteira do
+         * SANTO JAVA virava um anuncio de algo que ja tinha acontecido.
+         */
+        JOGADOR_GANHA_ARMADURA,
+        /**
+         * O buff do Paiola liga AGORA, na fala em que ele diz que vai
+         * orientar voce a objetos — e nao no fim da cena.
+         *
+         * Importa porque a linha seguinte e o anuncio do buff: se ele
+         * fosse concedido depois, o anuncio estaria descrevendo uma coisa
+         * que ainda nao existe, e a aura so acenderia na luta seguinte
+         * sem nenhuma ligacao visivel com o que acabou de ser dito.
+         */
+        JOGADOR_GANHA_ORIENTACAO
+    }
+
     /** De que lado da tela o retrato de um personagem aparece. */
     public enum Lado {
         ESQUERDA,
@@ -69,6 +105,22 @@ public class Cutscene {
         final String voz;
 
         /**
+         * Correcao de enquadramento do retrato.
+         *
+         * 1.0 = desenha na altura padrao. Serve pra arte cujo PERSONAGEM
+         * ocupa uma fracao diferente do PNG: o estudante_expansivo tem o
+         * mesmo rosto do estudante normal, mas com a aura desenhada em
+         * volta, entao no mesmo tamanho de caixa ele parece menor. Este
+         * numero devolve o rosto ao tamanho certo.
+         *
+         * Fica no personagem e nao numa conta automatica porque "o que
+         * conta como o personagem" e uma decisao de arte — nao da pra
+         * deduzir de alfa nem de bounding box (os dois PNGs sao opacos de
+         * ponta a ponta).
+         */
+        final double escala;
+
+        /**
          * Posicao ANIMADA: 0 = recuado (calado), 1 = a frente (falando).
          *
          * E o que faz o retrato deslizar em vez de teleportar. Fica no
@@ -78,15 +130,21 @@ public class Cutscene {
         double avanco = 0;
 
         public Personagem(String nome, String sprite, Lado lado, Color cor) {
-            this(nome, sprite, lado, cor, null);
+            this(nome, sprite, lado, cor, null, 1.0);
         }
 
         public Personagem(String nome, String sprite, Lado lado, Color cor, String voz) {
+            this(nome, sprite, lado, cor, voz, 1.0);
+        }
+
+        public Personagem(String nome, String sprite, Lado lado, Color cor,
+                          String voz, double escala) {
             this.nome = nome;
             this.sprite = sprite;
             this.lado = lado;
             this.cor = cor;
             this.voz = voz;
+            this.escala = escala;
         }
 
         public String getNome() {
@@ -118,6 +176,9 @@ public class Cutscene {
         /** Efeito tocado quando esta fala COMECA. null = nenhum. */
         final String som;
 
+        /** O que esta fala manda o jogo fazer quando comeca. */
+        final Gatilho gatilho;
+
         private Fala(Tipo tipo, Personagem personagem, String texto, String subtitulo,
                      String fundoNovo, Personagem[] elencoNovo) {
             this(tipo, personagem, texto, subtitulo, fundoNovo, elencoNovo, null);
@@ -125,6 +186,11 @@ public class Cutscene {
 
         private Fala(Tipo tipo, Personagem personagem, String texto, String subtitulo,
                      String fundoNovo, Personagem[] elencoNovo, String som) {
+            this(tipo, personagem, texto, subtitulo, fundoNovo, elencoNovo, som, Gatilho.NENHUM);
+        }
+
+        private Fala(Tipo tipo, Personagem personagem, String texto, String subtitulo,
+                     String fundoNovo, Personagem[] elencoNovo, String som, Gatilho gatilho) {
             this.tipo = tipo;
             this.personagem = personagem;
             this.texto = texto;
@@ -132,6 +198,17 @@ public class Cutscene {
             this.fundoNovo = fundoNovo;
             this.elencoNovo = elencoNovo;
             this.som = som;
+            this.gatilho = gatilho;
+        }
+
+        /**
+         * Devolve uma copia desta fala com um gatilho pro jogo.
+         *
+         * Encadeavel (Fala.fala(...).com(Gatilho.CHEFE_ENTRA)) pra nao
+         * precisar de uma fabrica nova pra cada combinacao.
+         */
+        public Fala com(Gatilho g) {
+            return new Fala(tipo, personagem, texto, subtitulo, fundoNovo, elencoNovo, som, g);
         }
 
         /** Fala que dispara um efeito sonoro (ex: a voiceline do Clayton). */
@@ -174,14 +251,49 @@ public class Cutscene {
 
     private final Fala[] falas;
 
+    /**
+     * O quanto a cena ja saiu da frente, de 0 a 1.
+     *
+     * 1 = veu, retratos e caixa totalmente invisiveis. Sobe durante a
+     * cerimonia da armadura e volta a zero depois dela.
+     */
+    private double saidaDaCena = 0;
+
     /** Elenco em cena AGORA. Muda quando uma Fala traz elencoNovo. */
     private Personagem[] elenco;
 
     /** Guardado pra poder voltar ao inicio no reiniciar(). */
     private final Personagem[] elencoInicial;
 
-    /** Cenario de fundo atual. Muda quando uma Fala traz fundoNovo. */
+    /**
+     * Cenario pedido pela cena. Nao e desenhado aqui: e repassado pro
+     * Main.fundo, que faz a transicao. Guardado so pra o reiniciar()
+     * conseguir voltar ao cenario inicial da cena.
+     */
     private String fundoAtual;
+
+    /**
+     * Gatilho que a fala atual disparou e a fase ainda nao consumiu.
+     *
+     * Fica pendente ate alguem chamar consumirGatilho(). A fase le isso
+     * uma vez por tick, entao nada se perde mesmo que a fala mude no
+     * mesmo frame.
+     */
+    private Gatilho gatilhoPendente = Gatilho.NENHUM;
+
+    /**
+     * O gatilho DESTA fala ja foi disparado?
+     *
+     * Sem esta trava o bug e catastrofico e foi exatamente o que
+     * aconteceu: aplicarFundoDaFalaAtual() roda TODO TICK (a troca de
+     * cenario e idempotente, entao repetir nao incomodava), e o gatilho
+     * pegou carona ali. Resultado: a fase recebia CHEFE_ENTRA sessenta
+     * vezes por segundo e criava uma chefe por frame — a tela enchia de
+     * Adrianas empilhadas, cada uma cuspindo o proprio padrao.
+     *
+     * Gatilho e EVENTO, nao estado. Mesma trava do somTocado.
+     */
+    private boolean gatilhoDisparado = false;
 
     private int indice = 0;
 
@@ -222,13 +334,32 @@ public class Cutscene {
                 Config.getDouble("cutscene.suavidadeRetrato", 0.12)));
     }
 
+    /**
+     * Pega o gatilho pendente e limpa. NENHUM se nao ha nada a fazer.
+     * Ver a enum Gatilho.
+     */
+    public Gatilho consumirGatilho() {
+
+        Gatilho g = gatilhoPendente;
+        gatilhoPendente = Gatilho.NENHUM;
+        gatilhoDisparado = false;
+
+        return g;
+    }
+
     /** Volta a cena pro comeco. Chame antes de exibir de novo. */
     public void reiniciar() {
         indice = 0;
+        gatilhoPendente = Gatilho.NENHUM;
+        gatilhoDisparado = false;
         charsMostrados = 0;
         t = 0;
         somTocado = false;
         fundoAtual = fundoInicial;
+
+        if (fundoInicial != null && Main.fundo != null) {
+            Main.fundo.trocarImagem(fundoInicial);
+        }
         elenco = elencoInicial;
 
         // Zera a animacao, senao a cena reabriria com o retrato ja avancado.
@@ -253,8 +384,23 @@ public class Cutscene {
 
         aplicarFundoDaFalaAtual();
         tocarSomDaFala();
+        dispararGatilhoDaFala();
 
-        boolean avancar = Main.z || Main.enter;
+        // ENQUANTO A ARMADURA ESTA SE FORMANDO, A CONVERSA NAO ANDA.
+        //
+        // A cerimonia do ESPANDAAAAA leva nove segundos e roda por cima da
+        // cena, sem congelar nada — inclusive sem congelar o Z e o ENTER.
+        // Resultado: dava pra sair apertando e chegar na Adriana com a
+        // energia ainda juntando no meio da tela, e a armadura fechava
+        // depois, no meio da fala dela.
+        //
+        // O ESC tambem fica preso aqui. Ele existe pra quem ja assistiu
+        // nao ter que reler tudo, mas pular uma cena e diferente de pular
+        // um EVENTO — e a armadura e evento: o jogador precisa dela pra
+        // ter bomba na luta seguinte.
+        boolean travadoPelaAscensao = Main.armaduraSeFormando();
+
+        boolean avancar = (Main.z || Main.enter) && !travadoPelaAscensao;
 
         if (avancar && !avancarAnterior) {
 
@@ -271,7 +417,7 @@ public class Cutscene {
 
         // ESC pula a cutscene inteira, pra quem ja assistiu nao precisar
         // clicar em cada linha de novo enquanto testa a fase.
-        if (Main.esc && !escAnterior) {
+        if (Main.esc && !escAnterior && !travadoPelaAscensao) {
             indice = falas.length;
         }
         escAnterior = Main.esc;
@@ -294,11 +440,37 @@ public class Cutscene {
         t++;
     }
 
+    /**
+     * Avisa o jogo do que esta fala pede — UMA vez so.
+     *
+     * Ver o campo gatilhoDisparado pra o motivo da trava.
+     */
+    private void dispararGatilhoDaFala() {
+
+        if (gatilhoDisparado) {
+            return;
+        }
+
+        gatilhoDisparado = true;
+
+        if (falas[indice].gatilho != Gatilho.NENHUM) {
+            gatilhoPendente = falas[indice].gatilho;
+        }
+    }
+
     /** Aplica as trocas de cenario e de elenco que a fala atual pedir. */
     private void aplicarFundoDaFalaAtual() {
 
         if (falas[indice].fundoNovo != null) {
+
             fundoAtual = falas[indice].fundoNovo;
+
+            // Pede o cenario NO JOGO, com transicao. A fala nao troca mais
+            // um fundo interno da cutscene: ela muda o mundo, e o jogador
+            // ve a passagem acontecer em vez de levar um corte.
+            if (Main.fundo != null) {
+                Main.fundo.trocarImagem(fundoAtual);
+            }
         }
 
         if (falas[indice].elencoNovo != null) {
@@ -391,6 +563,7 @@ public class Cutscene {
         charsMostrados = 0;
         t = 0;
         somTocado = false;
+        gatilhoDisparado = false;
 
         if (!acabou()) {
             aplicarFundoDaFalaAtual();
@@ -416,11 +589,51 @@ public class Cutscene {
 
         Fala atual = falas[indice];
 
-        desenharFundo(g);
+        // DURANTE A CERIMONIA DA ARMADURA, A CENA SAI DA FRENTE.
+        //
+        // O veu escuro e a caixa de fala existem pra o texto ter contraste
+        // — e enquanto a armadura se forma nao ha texto pra ler: a
+        // conversa esta travada de propósito naquela fala (ver tick).
+        // Deixar os dois na tela significava assistir ao momento mais
+        // importante do roteiro atras de um vidro fume, com metade dele
+        // coberta por uma caixa preta, porque o estudante fica justamente
+        // na faixa de baixo do campo.
+        //
+        // O sumico e GRADUAL: cortar de um frame pro outro pareceria bug
+        // de renderizacao, e nao a cena abrindo espaco.
+        if (Main.armaduraSeFormando()) {
+            saidaDaCena = Math.min(1.0, saidaDaCena + 1.0 / Math.max(1,
+                    Config.getInt("cutscene.ticksParaSairDaFrente", 22)));
+        } else {
+            saidaDaCena = Math.max(0.0, saidaDaCena - 0.06);
+        }
+
+        if (saidaDaCena >= 0.999) {
+            return;
+        }
+
+        // Um VEU leve, e nao um fundo proprio.
+        //
+        // Antes esta classe pintava a foto da cena por cima do campo, o
+        // que apagava o jogo e fazia o dialogo virar outra tela. Agora o
+        // cenario e o do jogo (que ainda esta rodando, com o chefe
+        // entrando voando), e aqui so escurecemos um pouco pra o texto
+        // ter contraste. Quem troca o cenario e o Main.fundo, com
+        // transicao — ver aplicarFala().
+        desenharVeu(g);
 
         if (atual.tipo == Tipo.TITULO) {
             renderTitulo(g, atual);
             return;
+        }
+
+        // Retratos e caixa somem juntos com o veu: tudo que e "cena"
+        // desaparece de uma vez, em vez de sobrar meia interface flutuando.
+        java.awt.Composite composto = g.getComposite();
+
+        if (saidaDaCena > 0) {
+            g.setComposite(java.awt.AlphaComposite.getInstance(
+                    java.awt.AlphaComposite.SRC_OVER, (float) (1 - saidaDaCena)));
         }
 
         if (elenco.length > 0) {
@@ -428,23 +641,23 @@ public class Cutscene {
         }
 
         renderCaixaDeFala(g, atual);
+
+        g.setComposite(composto);
     }
 
     /** Cenario de fundo, preenchendo o campo de jogo. */
-    private void desenharFundo(Graphics2D g) {
+    private void desenharVeu(Graphics2D g) {
 
-        BufferedImage img = (fundoAtual == null) ? null : Assets.get(fundoAtual);
+        // O (1 - saidaDaCena) e o que faz o preto sumir junto com o resto
+        // da cena durante a cerimonia da armadura.
+        int alpha = (int) (Config.getInt("cutscene.escurecimentoFundo", 110)
+                         * (1 - saidaDaCena));
 
-        if (img == null) {
-            g.setColor(Color.BLACK);
-            g.fillRect(Main.CAMPO_X, Main.CAMPO_Y, Main.CAMPO_W, Main.CAMPO_H);
+        if (alpha <= 0) {
             return;
         }
 
-        g.drawImage(img, Main.CAMPO_X, Main.CAMPO_Y, Main.CAMPO_W, Main.CAMPO_H, null);
-
-        // Escurece a foto: sem isso o texto branco some no ceu claro.
-        g.setColor(new Color(0, 0, 0, Config.getInt("cutscene.escurecimentoFundo", 110)));
+        g.setColor(new Color(0, 0, 0, alpha));
         g.fillRect(Main.CAMPO_X, Main.CAMPO_Y, Main.CAMPO_W, Main.CAMPO_H);
     }
 
@@ -479,7 +692,7 @@ public class Cutscene {
             // tamanho, posicao e opacidade mudam juntos e de forma continua.
             double a = p.avanco;
 
-            int altura = (int) (Main.CAMPO_H * (0.42 + 0.04 * a));
+            int altura = (int) (Main.CAMPO_H * (0.42 + 0.04 * a) * p.escala);
             int largura = img.getWidth() * altura / img.getHeight();
 
             // Quem esta calado recua PRA FORA da borda; quem fala avanca
@@ -676,9 +889,19 @@ public class Cutscene {
     public static final Personagem ADRIANA_MALIGNA = new Personagem(
         "Adriana", "sprites/bosses/adriana-integralmaligna.png", Lado.DIREITA, new Color(220, 40, 40), Som.VOZ_ADRIANA);
 
-    /** O estudante depois de ativar o compilador ("ESPANDAAAAA"). */
+    /**
+     * O estudante depois de ativar o compilador ("ESPANDAAAAA").
+     *
+     * A escala 1.53 nao e ele ficando maior por poder: e correcao de
+     * enquadramento. O rosto neste PNG e o MESMO do estudante.png
+     * (312x372 px), so que com a aura desenhada em volta ocupando o
+     * resto do quadro. Sem a correcao ele apareceria menor que a propria
+     * versao sem armadura, que e o contrario do que a cena diz.
+     */
     public static final Personagem ESTUDANTE_EXPANSIVO = new Personagem(
-        "Estudante", "sprites/player/estudante_expansivo.png", Lado.ESQUERDA, new Color(70, 150, 220), Som.VOZ_ESTUDANTE);
+        "Estudante", "sprites/player/estudante_expansivo.png", Lado.ESQUERDA,
+        new Color(70, 150, 220), Som.VOZ_ESTUDANTE,
+        Config.getDouble("cutscene.escalaDoExpansivo", 1.53));
 
     public static final Personagem CLAYTON = new Personagem(
         "Clayton", "sprites/bosses/clayton-base.png", Lado.DIREITA, new Color(90, 160, 200), Som.VOZ_CLAYTON);
@@ -689,9 +912,38 @@ public class Cutscene {
     public static final Personagem PAPA = new Personagem(
         "Papa", "sprites/bosses/papa-base.png", Lado.DIREITA, new Color(200, 170, 90), Som.VOZ_PAPA);
 
-    /** O virus depois de largar o corpo: "PAPA IA" (Roteiro.txt linha 70). */
+    /**
+     * O PAPA com a infeccao NO MAXIMO: "PAPA IA" (Roteiro.txt linha 70).
+     *
+     * Nao e o virus fora do corpo — e o virus tendo tomado o corpo por
+     * inteiro. Por isso a forma IA e a mais forte da luta, e nao um
+     * fantasma sobrando: e o hospedeiro completamente dominado. O virus
+     * so sai dele quando essa forma e derrotada (linhas 72 a 75).
+     */
     public static final Personagem PAPA_IA = new Personagem(
         "PAPA IA", "sprites/bosses/papa-IA_MALIGNA.png", Lado.DIREITA, new Color(120, 240, 200), Som.VOZ_PAPA);
+
+    /**
+     * PAIOLA, o professor que orienta a objetos.
+     *
+     * Aparece uma vez so, no fim do estagio 1, e e o unico personagem que
+     * conversa com o jogador sobre o PROPRIO JOGO — ele viu o trabalho e
+     * gostou. E uma quebra de quarta parede que so funciona porque o resto
+     * do roteiro leva a historia a serio.
+     */
+    public static final Personagem PAIOLA = new Personagem(
+        "Paiola", "sprites/npc/paiola.png", Lado.DIREITA, new Color(90, 150, 255), Som.VOZ_CLAYTON);
+
+    /**
+     * PEREA, o da lojinha.
+     *
+     * Unico personagem do jogo que nao e chefe nem narrador: ele nao quer
+     * nada com a historia, so quer vender. Fica na DIREITA, o lado dos
+     * chefes, de propósito — o jogador ja aprendeu que quem aparece
+     * daquele lado e um obstaculo, e a piada e que desta vez nao e.
+     */
+    public static final Personagem PEREA = new Personagem(
+        "Perea", "sprites/npc/perea.png", Lado.DIREITA, new Color(230, 180, 80), Som.VOZ_CLAYTON);
 
     /** Voz mental: aparece no centro da tela, brilhando, so quando fala. */
     public static final Personagem SANTO_JAVA = new Personagem(
@@ -735,11 +987,19 @@ public class Cutscene {
                         + "da Andrea em um dos computadores do LEPEC, e não quer refazer "
                         + "os 90 exercícios novamente..."),
 
-            // Roteiro.txt linha 8
-            Fala.narracao("Esgueirando-se pela portaria 1 e chegando ao LEPEC, você "
-                        + "percebe que vai precisar ir até o DCO buscar a chave de lá..."),
+            // Roteiro.txt linha 8.
+            // O fundo de abertura e portaria1.png e nao portaria.png:
+            // esta ultima e a foto da PORTARIA 2, e o roteiro diz 1.
+            //
+            // E esta ultima fala ja pede o cenario do CAMINHO, com
+            // transicao: assim a intro desemboca direto no estagio 1 com
+            // o fundo certo, sem ninguem precisar cortar. Sem isso o jogo
+            // comecaria com a foto da portaria rolando atras das ondas.
+            Fala.narracaoComFundo("Esgueirando-se pela portaria 1 e chegando ao LEPEC, você "
+                                + "percebe que vai precisar ir até o DCO buscar a chave de lá...",
+                                  "sprites/ambient/campus.png"),
 
-        }, null, "sprites/ambient/portaria.png");
+        }, null, "sprites/ambient/portaria1.png");
     }
 
     /**
@@ -747,15 +1007,24 @@ public class Cutscene {
      * (Roteiro.txt linhas 11 a 26). Inclui a ativacao do compilador pelo
      * SANTO JAVA (linhas 13 a 17), que e o que da poder ao jogador.
      *
-     * Formato: estilo Touhou, com retratos dos dois lados.
+     * O ESTUDANTE COMECA SEM RETRATO NENHUM, e volta so quando a Adriana
+     * aparece. Nao e economia de arte: o trecho do SANTO JAVA e uma voz
+     * saindo do nada e uma armadura se formando NO CAMPO, e um retrato
+     * parado no canto da tela competiria com as duas coisas. Quando a
+     * Adriana entra, o dialogo volta a ser entre duas pessoas e os dois
+     * retratos fazem sentido de novo — e o estudante reaparece ja na forma
+     * expansiva, que e a maneira mais barata de mostrar que algo mudou.
      */
     public static Cutscene criarEncontroAdriana() {
 
         return new Cutscene(new Fala[] {
 
             // Roteiro.txt linha 11-12
+            // Cenario: o caminho pelo campus, NAO o DCO. Pelo roteiro
+            // (linhas 18-19) a Adriana aparece na frente da sala 7
+            // ENQUANTO ele vai rumo ao DCO — ele ainda nao chegou la.
             Fala.narracaoComFundo("Você se sente acuado, como se ali fosse ser seu fim... até que...",
-                                  "sprites/ambient/dco.png"),
+                                  "sprites/ambient/campus.png"),
 
             // Roteiro.txt linha 13
             Fala.fala(SANTO_JAVA, "VOCÊ FOI ESCOLHIDO PELA EXPANSÃO... ATIVE VOSSO COMPILADOR!"),
@@ -766,22 +1035,46 @@ public class Cutscene {
             // Roteiro.txt linha 15
             Fala.fala(SANTO_JAVA, "RÁPIDO: GRITE DA MATRIZ DO SEU SER... \"ESPANDAAAAA\"!"),
 
-            // Roteiro.txt linha 16 — aqui o estudante ATIVA o poder, entao
-            // o retrato dele troca pro sprite expansivo a partir desta fala.
-            Fala.falaComElenco(ESTUDANTE, "Fazer o quê. ESPANDAAAAA!",
-                               new Personagem[] { ESTUDANTE_EXPANSIVO, SANTO_JAVA }),
+            // Roteiro.txt linha 16 — o grito que dispara a CERIMONIA.
+            //
+            // Repare que o elenco NAO muda aqui: o estudante continua sem
+            // retrato. A transformacao dele acontece no CAMPO, com a
+            // energia roxa juntando e a armadura fechando no baque da
+            // musica (ver AscensaoDaArmadura), e um retrato dele no canto
+            // roubaria o olho justamente do lugar onde a cena esta
+            // acontecendo.
+            Fala.fala(ESTUDANTE, "Fazer o quê. ESPANDAAAAA!")
+                .com(Gatilho.JOGADOR_GANHA_ARMADURA),
 
             // Roteiro.txt linha 17
             Fala.narracao("Uma armadura de energia que se expande infinitamente te cobre, "
                         + "e você sente que tem o poder pra lutar."),
 
+            // O QUE A ARMADURA FAZ, em duas linhas.
+            //
+            // Ela nao e so narrativa: e ela que destrava a GPT Expansion,
+            // a bomba do jogo. Antes disso o jogador via o botao aceso no
+            // painel a partir daqui e nao tinha como saber o que era nem
+            // que tecla usar — e uma bomba que voce nao sabe que tem e uma
+            // bomba que voce nao usa.
+            Fala.narracao("A armadura te dá a GPT EXPANSION: aperte V (ou clique no botão do "
+                        + "painel) e a logo sai de você, apagando todas as balas da tela e "
+                        + "machucando quem estiver perto."),
+
+            Fala.narracao("Você começa com algumas cargas e elas não voltam sozinhas. "
+                        + "E se você for atingido, ainda dá pra apertar V no susto: "
+                        + "a bomba sai a tempo e cancela a morte."),
+
             // Roteiro.txt linha 19 — chegada na SALA 7: troca o cenario e
             // poe a Adriana em cena (na forma base, ainda nao transformada).
+            // E AQUI que ela entra em cena no jogo — nao antes. Todo o
+            // trecho do SANTO JAVA acontece com a tela vazia, como o
+            // roteiro descreve.
             Fala.narracaoComFundoEElenco(
                 "Você segue rumo ao DCO. Porém, eventualmente, "
               + "ADRIANA APARECE NA FRENTE DA SALA 7.",
                 "sprites/ambient/sala7.png",
-                new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA }),
+                new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA }).com(Gatilho.CHEFE_ENTRA),
 
             // Roteiro.txt linha 20
             Fala.fala(ADRIANA, "MAIS UM! VOCÊ SERÁ O PRÓXIMO CORROMPIDO!"),
@@ -796,7 +1089,7 @@ public class Cutscene {
             // Roteiro.txt linha 25
             Fala.fala(ESTUDANTE_EXPANSIVO, "COMPILADOR, ESPANDAAAAA!"),
 
-        }, new Personagem[] { ESTUDANTE, SANTO_JAVA }, "sprites/ambient/dco.png");
+        }, new Personagem[] { SANTO_JAVA }, "sprites/ambient/campus.png");
     }
 
     /**
@@ -822,9 +1115,12 @@ public class Cutscene {
             // Roteiro.txt linha 31 — SO AQUI ela vira a forma maligna.
             // Antes desta fala o elenco usa o retrato normal: o sprite
             // vermelho estragaria a surpresa se aparecesse desde o inicio.
+            // O sprite EM JOGO troca junto com o retrato: sem o gatilho,
+            // ela virava maligna na caixa de dialogo e continuava na forma
+            // base voando no campo.
             Fala.falaComElenco(ADRIANA_MALIGNA,
                 "DOS CACHORROS QUE SABEM CÁLCULO! DERIVEM ELE ATÉ O 0!",
-                new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA_MALIGNA }),
+                new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA_MALIGNA }).com(Gatilho.CHEFE_TRANSFORMA),
 
         }, new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA }, "sprites/ambient/sala7.png");
     }
@@ -871,7 +1167,9 @@ public class Cutscene {
             Fala.narracao("Chegando lá..."),
 
             // Roteiro.txt linha 42
-            Fala.falaComSom(CLAYTON, "VOCÊ JÁ OUVIU FALAR EM LATEX?", Som.CLAYTON_LATEX),
+            // O Clayton entra em cena com a propria voiceline.
+            Fala.falaComSom(CLAYTON, "VOCÊ JÁ OUVIU FALAR EM LATEX?", Som.CLAYTON_LATEX)
+                .com(Gatilho.CHEFE_ENTRA),
 
             // Roteiro.txt linha 43
             Fala.fala(ESTUDANTE_EXPANSIVO, "O quê? Quem é você?"),
@@ -900,7 +1198,8 @@ public class Cutscene {
             // Roteiro.txt linha 48
             Fala.fala(CLAYTON, "Programar faz bem porque mesmo indo dormir sonhamos com os "
                              + "códigos rssss. E vamos para mais um dia com a graça de DEUS Py "
-                             + "o todo poderoso, ops, Pai..... Bom dia a todos!"),
+                             + "o todo poderoso, ops, Pai..... E as bênçãos da Mãe Maria. "
+                             + "Bom dia a todos!"),
 
             // Roteiro.txt linha 49
             Fala.fala(ESTUDANTE_EXPANSIVO, "Cara, você não fala nada com nada."),
@@ -910,7 +1209,8 @@ public class Cutscene {
 
             // Roteiro.txt linha 51 — AQUI ele vira o Tab maligno.
             Fala.falaComElenco(CLAYTON_MALIGNO, "E aqui.... continuamos ... #focoforçaefé #Spark #recognas",
-                               new Personagem[] { ESTUDANTE_EXPANSIVO, CLAYTON_MALIGNO }),
+                               new Personagem[] { ESTUDANTE_EXPANSIVO, CLAYTON_MALIGNO })
+                .com(Gatilho.CHEFE_TRANSFORMA),
 
         }, new Personagem[] { ESTUDANTE_EXPANSIVO, CLAYTON }, "sprites/ambient/dco.png");
     }
@@ -918,6 +1218,76 @@ public class Cutscene {
     /**
      * Derrota do Clayton (Roteiro.txt linhas 53 a 57).
      */
+    /**
+     * O PROFESSOR PAIOLA, no fim do estagio 1.
+     *
+     * Ele nao faz parte da trama do virus: e o orientador do trabalho,
+     * elogiando o proprio jogo em que ele esta aparecendo. O presente que
+     * ele da e o unico poder do jogo que nao machuca nada — e so
+     * informacao (ver Player.atualizarAmeaca).
+     *
+     * A cena fica DEPOIS das ondas e ANTES da Adriana de proposito: e o
+     * primeiro momento em que o jogador ja apanhou o suficiente pra
+     * entender por que saber "tem bala vindo em mim" vale como presente.
+     */
+    public static Cutscene criarPaiola() {
+
+        return new Cutscene(new Fala[] {
+
+            Fala.narracao("No meio do corredor, um professor te reconhece."),
+
+            Fala.fala(PAIOLA, "Opa, eai, tudo bem?"),
+
+            Fala.fala(ESTUDANTE, "bão prof, já mandei o trabalho do joguinho, cê gostou?"),
+
+            Fala.fala(PAIOLA, "Cara, eu achei sensacional, principalmente a parte que "
+                            + "vc aplicou o OPF do papa em um bullet pattern"),
+
+            Fala.fala(ESTUDANTE, "que bom, demorou um tempão pra fazer"),
+
+            Fala.fala(PAIOLA, "cara, vou te dar um presente, vou te orientar à objetos")
+                .com(Gatilho.JOGADOR_GANHA_ORIENTACAO),
+
+            // Duas falas e nao uma com "\n" no meio: a caixa de texto
+            // quebra linha por PALAVRA (ver desenharTexto), entao um \n
+            // sairia desenhado como um quadradinho no meio da frase.
+            Fala.narracao("VOCÊ RECEBEU O BUFF: \"Programação Orientada a Objetos\""),
+
+            Fala.narracao("Uma aura azul brilha em volta de você quando uma bala "
+                        + "está indo na sua direção."),
+
+        }, new Personagem[] { ESTUDANTE, PAIOLA }, "sprites/ambient/campus.png");
+    }
+
+    /**
+     * A LOJINHA DO PEREA, entre o Clayton e o PAPA.
+     *
+     * Fica depois da derrota do Clayton e antes do caminho pro LEPEC: e o
+     * unico respiro do jogo, e o unico momento em que o jogador toma uma
+     * decisao que nao e de esquiva. Vem DEPOIS da luta mais longa de
+     * proposito — e ali que ele ja juntou moeda pra ter escolha de
+     * verdade, e nao so um item comprado por falta de opcao.
+     *
+     * Quando esta cena acaba, a fase abre a loja (ver phase1.stage5).
+     */
+    public static Cutscene criarPerea() {
+
+        return new Cutscene(new Fala[] {
+
+            Fala.narracao("No caminho, encostado numa mesa de plástico, um senhor "
+                        + "de óculos monta uma banquinha."),
+
+            Fala.fala(ESTUDANTE_EXPANSIVO, "Perea? eai, tranquilo?"),
+
+            Fala.fala(PEREA, "eai, tudo bom?"),
+
+            Fala.fala(ESTUDANTE_EXPANSIVO, "bao, ce sabe oq ta acontecendo??"),
+
+            Fala.fala(PEREA, "sei lá, quer ver umas coisas supimpas que eu tenho aqui?"),
+
+        }, new Personagem[] { ESTUDANTE_EXPANSIVO, PEREA }, "sprites/ambient/dco.png");
+    }
+
     public static Cutscene criarDerrotaClayton() {
 
         return new Cutscene(new Fala[] {
@@ -960,7 +1330,9 @@ public class Cutscene {
                                   "sprites/ambient/lepec.png"),
 
             // Roteiro.txt linha 58
-            Fala.fala(PAPA, "Olha só o que temos aqui! Como profetizado no disquete, você veio."),
+            // O PAPA entra em cena na primeira fala dele.
+            Fala.fala(PAPA, "Olha só o que temos aqui! Como profetizado no disquete, você veio.")
+                .com(Gatilho.CHEFE_ENTRA),
 
             // Roteiro.txt linha 59
             Fala.fala(ESTUDANTE_EXPANSIVO, "Eu não tenho ideia do que tá acontecendo, eu só quero "
@@ -970,8 +1342,12 @@ public class Cutscene {
             Fala.fala(PAPA, "E é isso que é seu problema: você não se rendeu ao anticódigo. "
                           + "Você se esforça muito pelo código."),
 
-            // Roteiro.txt linha 61
-            Fala.fala(ESTUDANTE_EXPANSIVO, "Só me deixa pegar a chave na recepção, vei."),
+            // Roteiro.txt linha 61.
+            // Era "so me deixa pegar a chave na recepcao" — mas pela linha
+            // 57 ele JA achou a chave, e e com ela que entrou no LEPEC.
+            // Pedir a chave aqui contradizia a cena anterior; o que ele
+            // ainda quer, e nunca deixou de querer, e a lista.
+            Fala.fala(ESTUDANTE_EXPANSIVO, "Só me deixa pegar minha lista de exercícios, vei."),
 
             // Roteiro.txt linha 62
             Fala.fala(PAPA, "Você realmente não entende o que está acontecendo aqui, né?"),
@@ -997,6 +1373,12 @@ public class Cutscene {
     /**
      * Transformacao no PAPA IA (Roteiro.txt linhas 69 a 71).
      *
+     * ATENCAO ao sentido da cena, que ja esteve invertido aqui: o PAPA IA
+     * e o PAPA com a infeccao NO MAXIMO — o virus tomando o corpo por
+     * inteiro —, e nao o virus abandonando o corpo. Por isso esta cena
+     * ESCALA a luta em vez de encerra-la. O virus so vai embora quando a
+     * forma IA cai, na cutscene de derrota.
+     *
      * O roteiro pede "* tela toda fica branca *". Isso e feito com uma
      * cartela TITULO no meio da cena: ela ja e desenhada em tela cheia, e
      * cai bem melhor que um flash — o jogador le a virada em vez de so
@@ -1011,11 +1393,14 @@ public class Cutscene {
                           + "NÃOOOOOOOOOOOOOOOOOOOOOOOOOOO"),
 
             // Roteiro.txt linha 69 — "* tela toda fica branca *"
-            Fala.titulo("SEGMENTATION FAULT", "o vírus larga o corpo"),
+            // A tela branca e a infeccao FECHANDO em cima dele, nao o
+            // virus indo embora: e daqui que sai a forma mais forte.
+            Fala.titulo("INFECÇÃO TOTAL", "o vírus toma o PAPA por inteiro"),
 
             // Roteiro.txt linha 70 — aqui ele vira a IA
             Fala.falaComElenco(PAPA_IA, "Agora você vai saber o gosto da derrota!",
-                               new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA_IA }),
+                               new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA_IA })
+                .com(Gatilho.CHEFE_TRANSFORMA),
 
             // Roteiro.txt linha 71
             Fala.fala(ESTUDANTE_EXPANSIVO, "Você falou que ia atacar o UBA. Ninguém encosta no UBA!!!! "
@@ -1027,15 +1412,20 @@ public class Cutscene {
     /**
      * Derrota do PAPA IA e final do jogo (Roteiro.txt linhas 72 a 82).
      *
-     * O virus e expulso, o PAPA volta ao normal sem lembrar de nada, e
-     * todo mundo vai pro UBA. A ultima fala e o virus gritando de longe,
-     * ja sem retrato nenhum em cena — ele nao tem mais corpo.
+     * E nesta cena — e so nela — que o virus DEIXA o corpo: derrotar a
+     * forma IA e o que expulsa ele. O PAPA volta ao normal sem lembrar de
+     * nada e todo mundo vai pro UBA.
+     *
+     * A ultima fala (linha 81) e o virus gritando ja sem hospedeiro, e
+     * por isso sai como narracao, sem retrato: nao ha mais corpo pra
+     * mostrar.
      */
     public static Cutscene criarDerrotaPapa() {
 
         return new Cutscene(new Fala[] {
 
-            // Roteiro.txt linha 72
+            // Roteiro.txt linha 72 — e AQUI que o virus e expulso: a
+            // forma infectada cai e o corpo volta a ser so o professor.
             Fala.fala(PAPA_IA, "ARGHHGHHHHHH.. NÃOOOOOO"),
 
             // Roteiro.txt linha 73 — volta ao normal
@@ -1058,11 +1448,13 @@ public class Cutscene {
             // Roteiro.txt linha 79 — "Foto final todos aparecem no uba bebendo"
             Fala.narracaoComFundo("E assim, com a lista de exercícios salva, todo mundo "
                                 + "foi parar no UBA.",
-                                  "sprites/ambient/portaria1.png"),
+                                  "sprites/ambient/uba.png"),
 
-            // Roteiro.txt linha 81 — o virus, sem corpo, gritando de longe
-            Fala.narracao("PAPA IA: ARRRRGHHHHHH NÃO PODE ACABAR ASSIMMMMMM "
-                        + "NAOOOOOOOOOOOOOOOOOOOOOOO"),
+            // Roteiro.txt linha 81 — o virus, ja sem hospedeiro, gritando
+            // de algum lugar. Narracao e nao fala: ele nao tem mais corpo,
+            // entao nao ha retrato pra pendurar essa linha.
+            Fala.narracao("Em algum lugar, sem corpo nenhum pra habitar, o vírus ainda grita: "
+                        + "\"ARRRRGHHHHHH NÃO PODE ACABAR ASSIMMMMMM NAOOOOOOOOOOOO\""),
 
             Fala.titulo("FIM", "obrigado por jogar"),
 

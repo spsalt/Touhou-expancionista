@@ -107,7 +107,7 @@ public class EsferaSpell extends SpellCard {
             return;
         }
 
-        Som.tocar(Som.TIRO_INIMIGO);
+        Som.tocar(Som.ADRIANA_REVOLUCAO);
 
         // Alterna o sentido do giro a cada esfera, pra o jogador nao
         // decorar um unico caminho de fuga.

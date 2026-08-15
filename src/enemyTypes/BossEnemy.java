@@ -48,6 +48,55 @@ public class BossEnemy extends Enemy {
     /** Ticks restantes mostrando o nome do ataque na tela. */
     private int anuncio = 0;
 
+    /**
+     * ENTRANDO EM CENA, enquanto o dialogo rola.
+     *
+     * Neste estado ele VOA ate a posicao normal, mas nao ataca e nao
+     * pode levar dano. E o que permite a conversa acontecer com o jogo
+     * rodando por baixo, como na serie: o chefe chega voando, os
+     * retratos deslizam, o texto aparece — e nada disso corta pra outra
+     * tela.
+     *
+     * O primeiro spell card so e anunciado quando isto vira false (ver
+     * sairDoDialogo), senao o nome do ataque apareceria por cima da
+     * conversa e a barra de HP comecaria a descer durante o dialogo.
+     */
+    private boolean emDialogo = false;
+
+    /**
+     * Ele ja soltou a primeira bala desta LUTA (nao deste spell card).
+     *
+     * E uma TRAVA: liga uma vez e nunca mais desliga enquanto ele viver.
+     * Isso e o ponto — a versao anterior perguntava "tSpell > 0", e o
+     * tSpell ZERA a cada troca de ataque. Resultado: no frame da troca a
+     * resposta virava "ainda nao esta lutando", a musica caia pro silencio
+     * e no frame seguinte voltava DO COMECO. Toda spell card nova
+     * reiniciava a trilha.
+     *
+     * Serve pras duas coisas que so valem depois da luta comecar: o tema
+     * do chefe entrar e ele comecar a derivar pros lados.
+     */
+    private boolean jaComecouAAtacar = false;
+
+    /**
+     * O jogador morreu ou bombou durante o spell card atual?
+     *
+     * Em Touhou, "capturar" um spell card e quebra-lo sem perder vida e
+     * sem usar bomba — e so a captura vale o bonus. E o que transforma
+     * cada ataque num desafio proprio em vez de um pedaco de barra de HP:
+     * da pra vencer feio ou vencer limpo, e o placar sabe a diferenca.
+     */
+    private boolean spellSujo = false;
+
+    /** Ticks restantes mostrando o resultado da captura. */
+    private int anuncioBonus = 0;
+
+    /** Texto do resultado ("CAPTURADO +12000" ou "FALHOU"). */
+    private String textoBonus = "";
+
+    /** Se o ultimo spell foi capturado limpo (muda a cor do anuncio). */
+    private boolean ultimaCapturaLimpa = false;
+
     /* --- movimento --- */
 
     /** Altura em que o chefe fica, em pixels absolutos. */
@@ -59,6 +108,14 @@ public class BossEnemy extends Enemy {
 
     /** X do centro da deriva (meio do campo). */
     private final double centroX;
+
+    /**
+     * Multiplicador da LARGURA do sprite. 1.0 = proporcao original.
+     *
+     * So desenho: nao mexe no raio de colisao, que continua sendo o
+     * circulo de 'radius' no centro.
+     */
+    protected double escalaLargura = 1.0;
 
     /**
      * Relogio da deriva. Separado do 't' geral porque ele PARA quando a
@@ -78,10 +135,38 @@ public class BossEnemy extends Enemy {
      */
     private boolean paradoNoLugar = false;
 
+    /* --- agrotoxico (AGRICULTURA DIGITAL, da lojinha do Perea) --- */
+
+    /**
+     * Ticks restantes de veneno. Renovado pelos drones enquanto pulverizam.
+     *
+     * O envenenado nao "anda mais devagar": ele RECEBE MENOS TICKS. Isso
+     * desacelera tudo dele de uma vez — deriva, cadencia de tiro, relogio
+     * do spell card — sem precisar de um fator de velocidade dentro de
+     * cada um dos onze ataques do jogo.
+     */
+    private int agrotoxico = 0;
+
+    /**
+     * Sobra de tick acumulada.
+     *
+     * Com fator 0.55, a cada tick a gente soma 0.55 aqui; o chefe so roda
+     * um frame quando isso passa de 1. Sem o acumulador, "pular um tick
+     * sim, um nao" seria o unico ritmo possivel (fator 0.5 fixo) e
+     * qualquer outro valor de config nao teria efeito nenhum.
+     */
+    private double sobraDeTick = 0;
+
     /* --- ajustes --- */
 
     private int ticksInvulnerabilidadeNaTroca;
     private int ticksAnuncio;
+
+    /** Pontos base por capturar um spell card sem morrer nem bombar. */
+    private int bonusDeCaptura;
+
+    /** Fracao do bonus que ainda sobra quando o tempo quase acabou. */
+    private double bonusMinimo;
 
     public BossEnemy(SpellCard[] spellCards, String sprite, double escalaSprite) {
 
@@ -102,11 +187,52 @@ public class BossEnemy extends Enemy {
 
         carregarConfig();
 
-        if (spellCards.length > 0) {
+        // O primeiro spell card NAO comeca aqui. Quem o dispara e
+        // comecarLuta(), chamado ou pelo fim do dialogo ou na hora do
+        // spawn quando nao ha conversa nenhuma.
+    }
+
+    /**
+     * Poe o chefe em modo "chegando": voa pra posicao, calado e imune.
+     * Chamado pela fase logo depois de criar ele, antes do dialogo.
+     */
+    public void entrarEmDialogo() {
+        emDialogo = true;
+    }
+
+    /**
+     * Acabou a conversa: comeca a luta de verdade.
+     *
+     * Idempotente — a fase chama isso quando percebe que a cutscene
+     * terminou, e essa percepcao acontece dentro do tick().
+     */
+    public void comecarLuta() {
+
+        if (!emDialogo && anuncio > 0) {
+            return;
+        }
+
+        emDialogo = false;
+
+        if (spellCards.length > 0 && spellAtual == 0 && tSpell == 0) {
             anuncio = ticksAnuncio;
             spellCards[0].iniciar(this);
             Som.tocar(Som.SPELL_INICIA);
         }
+    }
+
+    public boolean isEmDialogo() {
+        return emDialogo;
+    }
+
+    /**
+     * true depois da primeira bala DESTA LUTA.
+     *
+     * Continua true entre um spell card e outro — e justamente pra isso
+     * que ela existe (ver o campo jaComecouAAtacar).
+     */
+    public boolean jaComecouAAtacar() {
+        return jaComecouAAtacar;
     }
 
     private void carregarConfig() {
@@ -117,6 +243,9 @@ public class BossEnemy extends Enemy {
 
         this.ticksInvulnerabilidadeNaTroca = Config.getInt("chefe.ticksInvulnerabilidadeNaTroca", 90);
         this.ticksAnuncio = Config.getInt("chefe.ticksAnuncio", 120);
+
+        this.bonusDeCaptura = Config.getInt("chefe.bonusDeCaptura", 12000);
+        this.bonusMinimo    = Config.getDouble("chefe.fracaoMinimaDoBonus", 0.25);
     }
 
     /* =========================
@@ -126,16 +255,51 @@ public class BossEnemy extends Enemy {
     @Override
     public void tick() {
 
+        // ENVENENADO: o frame simplesmente nao acontece.
+        //
+        // Fica ANTES de tudo, inclusive do mover(), pra a lentidao valer
+        // tambem pra deriva — um chefe que atira devagar mas desliza na
+        // velocidade normal parece bugado, nao lento.
+        if (agrotoxico > 0) {
+
+            agrotoxico--;
+
+            sobraDeTick += Config.getDouble("perea.agricultura.fatorDeLentidao", 0.55);
+
+            if (sobraDeTick < 1.0) {
+                return;
+            }
+
+            sobraDeTick -= 1.0;
+        }
+
         mover();
+
+        // Durante o dialogo ele so entra em cena: nao atira, nao conta
+        // tempo de spell card e nao pode ser ferido (ver levarDano).
+        if (emDialogo) {
+            t++;
+            return;
+        }
+
+        encostarNoJogador();
 
         if (invulneravel > 0) {
             invulneravel--;
         } else {
+            // A trava liga aqui: no primeiro frame em que ele de fato
+            // ataca. Nao no comecarLuta(), porque entre um e outro ainda
+            // ha a janela de invulnerabilidade da troca.
+            jaComecouAAtacar = true;
             atirar();
         }
 
         if (anuncio > 0) {
             anuncio--;
+        }
+
+        if (anuncioBonus > 0) {
+            anuncioBonus--;
         }
 
         // Tempo limite do spell card: o ataque passa mesmo sem o jogador
@@ -164,11 +328,75 @@ public class BossEnemy extends Enemy {
 
         y = alturaDeVoo;
 
-        if (!paradoNoLugar) {
+        // ELE SO COMECA A DERIVAR QUANDO COMECA A ATACAR.
+        //
+        // Antes ele ja ia e voltava durante a conversa inteira, o que
+        // fazia a cena parecer que ja tinha comecado: chefe que anda
+        // parece chefe lutando. Parado no meio, a entrada dele fica sendo
+        // uma POSE — ele desce, encara, o dialogo acontece, e o primeiro
+        // passo pro lado coincide com a primeira bala.
+        //
+        // Nao precisa de estado novo: o tDeriva simplesmente nao avanca, e
+        // como sin(0) = 0, ele fica exatamente no centro ate la.
+        if (jaComecouAAtacar && !paradoNoLugar) {
             tDeriva++;
         }
 
         x = centroX + Math.sin(2 * Math.PI * tDeriva / periodoDeriva) * amplitudeDeriva;
+    }
+
+    /**
+     * Joga agrotoxico neste chefe: ele fica lento por 'ticks'.
+     *
+     * Nao acumula (usa max e nao soma) — dois drones pulverizando ao mesmo
+     * tempo renovariam o veneno duas vezes por frame e o chefe congelaria.
+     */
+    public void aplicarAgrotoxico(int ticks) {
+        agrotoxico = Math.max(agrotoxico, ticks);
+    }
+
+    /** true enquanto o veneno da AGRICULTURA DIGITAL estiver agindo. */
+    public boolean estaEnvenenado() {
+        return agrotoxico > 0;
+    }
+
+    /**
+     * O CORPO DO CHEFE MACHUCA.
+     *
+     * Sem isto existia um buraco que resolvia o jogo inteiro: dava pra
+     * colar no chefe e passar todos os ataques encostado nele. Faz sentido
+     * geometricamente — quase todo padrao do jogo NASCE nele e vai pra
+     * fora, entao o ponto mais seguro do campo era exatamente em cima da
+     * origem. Um bullet hell em que o lugar mais seguro e o centro do
+     * inimigo nao e um bullet hell.
+     *
+     * O RAIO DE CONTATO E MENOR QUE O DE TIRO. O de tiro (chefe.raio) e
+     * generoso de proposito, pra acertar um alvo grande nao virar teste de
+     * pontaria; usar ele aqui puniria chegar perto, e chegar perto e
+     * legitimo — e assim que se causa dano rapido. O de contato cobre so o
+     * corpo de verdade, entao voce pode ficar colado, mas nao DENTRO.
+     *
+     * Nao ha cronometro proprio: quem segura a repeticao e a janela de
+     * invulnerabilidade do proprio jogador, que ja existe e ja dura dois
+     * segundos. Um cronometro aqui seria uma segunda regra dizendo a mesma
+     * coisa, e as duas iam brigar quando alguem mexesse numa delas.
+     */
+    private void encostarNoJogador() {
+
+        // Enquanto ele esta ENTRANDO em cena nao machuca: ele atravessa o
+        // campo de cima ate a posicao de voo, e o jogador pode estar
+        // parado no caminho sem ter como saber que devia sair.
+        if (emDialogo || Main.player == null) {
+            return;
+        }
+
+        double raioDeContato = radius * Config.getDouble("chefe.fatorDoRaioDeContato", 0.55);
+
+        double dist = Main.getDist(x, y, Main.player.getX(), Main.player.getY());
+
+        if (dist <= raioDeContato + Main.player.getRadius()) {
+            Main.player.levarDano();
+        }
     }
 
     /** Planta (ou solta) a chefe. Ver o campo paradoNoLugar. */
@@ -200,13 +428,24 @@ public class BossEnemy extends Enemy {
     }
 
     /**
+     * Avisa que o jogador morreu ou bombou: este spell card nao conta
+     * mais como capturado.
+     *
+     * Chamado pelo Player, nao pelo chefe — quem sabe que perdeu uma vida
+     * e o jogador.
+     */
+    public void marcarFalha() {
+        spellSujo = true;
+    }
+
+    /**
      * Aplica dano, mas so ate o fim do spell card atual: o excedente NAO
      * vaza pro proximo ataque. Cada spell card e uma luta separada.
      */
     @Override
     public boolean levarDano(double dano) {
 
-        if (!isAlive || invulneravel > 0) {
+        if (!isAlive || invulneravel > 0 || emDialogo) {
             return false;
         }
 
@@ -227,6 +466,8 @@ public class BossEnemy extends Enemy {
     private void proximoSpellCard() {
 
         Som.tocar(Som.SPELL_QUEBRA);
+
+        fecharBonusDeCaptura();
 
         // Avisa o ataque que ele acabou ANTES de trocar o indice, senao
         // quem receberia o aviso seria o proximo.
@@ -252,6 +493,7 @@ public class BossEnemy extends Enemy {
         hpMaximo = hp;
 
         tSpell = 0;
+        spellSujo = false;
         invulneravel = ticksInvulnerabilidadeNaTroca;
         anuncio = ticksAnuncio;
 
@@ -272,11 +514,80 @@ public class BossEnemy extends Enemy {
 
         limparBalasInimigas();
 
+        // UM CARD DE GPT EXPANSION por chefe derrotado. Um so.
+        //
+        // A bomba nao se recupera de nenhuma outra forma na partida
+        // inteira: comeca com algumas e, quando acabam, acabaram. Isso
+        // fazia a jogada otima ser guardar pra sempre — morrer com bomba
+        // no bolso e o erro mais comum de quem joga bullet hell, e o jogo
+        // estava premiando ele.
+        //
+        // Um por chefe (e nao por spell card) mantem o peso da decisao:
+        // voce recupera, mas so depois de uma luta inteira.
+        Main.points.add(new Point(x, y + 20, false, Point.Tipo.CARD_GPT));
+
         if (Main.player != null) {
             Main.player.setPontuacao(Main.player.getPontuacao() + pontos);
         }
 
         soltarItens(itens);
+    }
+
+    /**
+     * Tira o chefe de cena SEM ser por morte nem por troca de ataque —
+     * usado pelo pulo de estagio do modo debug (F2).
+     *
+     * Existe porque simplesmente limpar a lista de inimigos NAO avisa o
+     * spell card ativo de que ele acabou, e ataque que mexe em estado de
+     * fora (a maquina de Turing trava o movimento do jogador) deixaria a
+     * bagunca pra tras. Com o F2 no meio da fita, o jogador ficava preso
+     * dentro do cabecote pro resto da partida.
+     */
+    public void abandonar() {
+
+        if (temSpellAtivo()) {
+            spellCards[spellAtual].encerrar(this);
+        }
+
+        paradoNoLugar = false;
+        isAlive = false;
+    }
+
+    /**
+     * Fecha a conta do spell card que acabou de terminar.
+     *
+     * O bonus so sai se o jogador NAO morreu, NAO bombou e quebrou o
+     * ataque no HP (estourar o tempo nao e captura — e sobreviver, que ja
+     * tem premio proprio: continuar vivo).
+     *
+     * O valor decai com o tempo gasto, de 100% ate 'fracaoMinimaDoBonus':
+     * matar rapido vale mais. Isso importa porque, sem o decaimento, a
+     * jogada otima seria ficar desviando sem atirar ate o fim do tempo.
+     */
+    private void fecharBonusDeCaptura() {
+
+        if (!temSpellAtivo() || Main.player == null) {
+            return;
+        }
+
+        boolean porTempo = tSpell >= spellCards[spellAtual].getDuracao();
+        ultimaCapturaLimpa = !spellSujo && !porTempo;
+
+        anuncioBonus = ticksAnuncio;
+
+        if (!ultimaCapturaLimpa) {
+            textoBonus = porTempo ? "TEMPO ESGOTADO" : "FALHOU";
+            return;
+        }
+
+        double sobra = 1.0 - tSpell / (double) spellCards[spellAtual].getDuracao();
+        double fator = bonusMinimo + (1 - bonusMinimo) * Math.max(0, Math.min(1, sobra));
+
+        int pontos = (int) (bonusDeCaptura * fator);
+
+        Main.player.setPontuacao(Main.player.getPontuacao() + pontos);
+
+        textoBonus = "CAPTURADO  +" + pontos;
     }
 
     /** Apaga toda bala inimiga da tela (sem tocar nas balas do jogador). */
@@ -290,17 +601,28 @@ public class BossEnemy extends Enemy {
         }
     }
 
-    /** Espalha itens de XP em volta do chefe. */
+    /**
+     * Espalha itens em volta do chefe — parte XP, parte MOEDA.
+     *
+     * Mesma proporcao dos inimigos comuns (ver Enemy.morrer). Deixar o
+     * chefe dando so XP seria estranho justamente onde mais cai item: o
+     * jogador terminaria a luta mais longa do jogo com a carteira parada.
+     */
     private void soltarItens(int quantidade) {
+
+        int aCada = Math.max(1, Config.getInt("moeda.umaMoedaACada", 3));
 
         for (int i = 0; i < quantidade; i++) {
 
             double ang = (2 * Math.PI * i) / Math.max(1, quantidade);
             double raio = 30 + (i % 3) * 18;
 
+            Point.Tipo tipo = (i % aCada == aCada - 1) ? Point.Tipo.MOEDA : Point.Tipo.XP;
+
             Main.points.add(new Point(x + Math.cos(ang) * raio,
                                       y + Math.sin(ang) * raio,
-                                      false));
+                                      false,
+                                      tipo));
         }
     }
 
@@ -318,8 +640,67 @@ public class BossEnemy extends Enemy {
         }
 
         desenharSprite(g);
-        desenharBarraDeVidaDoChefe(g);
-        desenharAnuncio(g);
+
+        // Nada de HUD de chefe enquanto ele so esta chegando: barra de
+        // vida e cronometro anunciariam uma luta que ainda nao comecou, e
+        // competiriam com a caixa de dialogo pelo mesmo canto da tela.
+        if (!emDialogo) {
+            desenharIndicadorNoRodape(g);
+            desenharBarraDeVidaDoChefe(g);
+            desenharAnuncio(g);
+            desenharResultadoDaCaptura(g);
+        }
+    }
+
+    /**
+     * O MARCADOR NO RODAPE dizendo em que coluna o chefe esta.
+     *
+     * E o mesmo da serie, e ele resolve um problema concreto: o jogador
+     * passa a luta inteira na faixa de baixo da tela olhando pras balas
+     * que vem na cara dele. Levantar o olho ate o topo pra achar o chefe
+     * custa exatamente o instante em que ele mais precisa estar olhando pra
+     * baixo — entao, na pratica, ele atira no escuro.
+     *
+     * Com o marcador, a informacao "onde mirar" fica no MESMO lugar pra
+     * onde ele ja esta olhando. Nao e uma ajuda: e tirar do caminho uma
+     * dificuldade que nunca foi sobre habilidade.
+     *
+     * Ele pulsa por dois motivos somados — um seno lento (a respiracao,
+     * pra ele nao sumir no fundo) e um brilho extra enquanto o chefe esta
+     * invulneravel na troca de ataque, que avisa "nao adianta atirar
+     * agora" sem escrever isso em lugar nenhum.
+     */
+    private void desenharIndicadorNoRodape(Graphics2D g) {
+
+        int y = Main.CAMPO_Y + Main.CAMPO_H - Config.getInt("chefe.alturaDoIndicador", 10);
+
+        double pulso = 0.5 + 0.5 * Math.sin(t * 0.09);
+        double largura = Config.getDouble("chefe.larguraDoIndicador", 26);
+
+        // Cor: rosa normal, esbranquicado enquanto invulneravel.
+        int r = 255;
+        int gg = invulneravel > 0 ? 230 : 110;
+        int b = invulneravel > 0 ? 240 : 160;
+
+        // Halo largo e fraco por baixo, marca solida por cima. Uma marca
+        // solida sozinha some numa tela cheia de bala; o halo e o que
+        // garante que ela seja percebida pelo canto do olho.
+        for (int i = 3; i >= 1; i--) {
+
+            double w = largura * (0.4 + i * 0.35) * (0.85 + 0.15 * pulso);
+            int alpha = (int) ((30 + 25 * (4 - i)) * (0.6 + 0.4 * pulso));
+
+            g.setColor(new Color(r, gg, b, Math.min(255, alpha)));
+            g.fillOval((int) (x - w / 2), y - 5, (int) w, 10);
+        }
+
+        g.setColor(new Color(r, gg, b, (int) (180 + 75 * pulso)));
+        g.fillOval((int) (x - largura / 4), y - 3, (int) (largura / 2), 6);
+
+        // Risquinho vertical subindo: liga o marcador ao campo, senao ele
+        // parece um enfeite solto na borda de baixo.
+        g.setColor(new Color(r, gg, b, (int) (60 * pulso)));
+        g.drawLine((int) x, y - 6, (int) x, y - 22);
     }
 
     private void desenharSprite(Graphics2D g) {
@@ -340,7 +721,12 @@ public class BossEnemy extends Enemy {
         double caixa = radius * 2 * escalaSprite;
         double fator = caixa / Math.max(img.getWidth(), img.getHeight());
 
-        int larg = (int) (img.getWidth() * fator);
+        // escalaLargura estica SO na horizontal, sem mexer na altura nem
+        // na colisao. Serve pra arte cuja proporcao original nao combina
+        // com o personagem — o Clayton fica magro demais no enquadramento
+        // padrao. Deformar de proposito e mais barato (e mais facil de
+        // ajustar) do que refazer o PNG.
+        int larg = (int) (img.getWidth() * fator * escalaLargura);
         int alt  = (int) (img.getHeight() * fator);
 
         g.drawImage(img, (int) (x - larg / 2.0), (int) (y - alt / 2.0), larg, alt, null);
@@ -394,33 +780,135 @@ public class BossEnemy extends Enemy {
             int larguraTexto = g.getFontMetrics().stringWidth(nome);
 
             g.drawString(nome, x0 + largura - larguraTexto, y0 - 8);
+
+            desenharCronometro(g, x0 + largura, y0 + 22);
         }
     }
 
-    /** Nome do spell card em destaque no meio do campo, quando ele comeca. */
+    /**
+     * Segundos que faltam pro spell card estourar, no canto da barra.
+     *
+     * Existe pelo mesmo motivo da serie inteira ter: o tempo restante e
+     * uma informacao TATICA. Faltando pouco, vale mais desviar do que
+     * arriscar chegar perto pra dar dano — mas so da pra tomar essa
+     * decisao vendo o numero. Fica vermelho nos ultimos 5 segundos.
+     */
+    private void desenharCronometro(Graphics2D g, int direita, int y) {
+
+        int restam = Math.max(0, spellCards[spellAtual].getDuracao() - tSpell);
+        double segundos = restam / 60.0;
+
+        g.setFont(new Font("Monospaced", Font.BOLD, 15));
+        g.setColor(segundos <= 5 ? new Color(255, 110, 110) : new Color(235, 230, 245));
+
+        String texto = String.format("%04.1f", segundos);
+        int larg = g.getFontMetrics().stringWidth(texto);
+
+        g.drawString(texto, direita - larg, y);
+    }
+
+    /** "CAPTURADO +N" ou "FALHOU", logo depois de um spell card fechar. */
+    private void desenharResultadoDaCaptura(Graphics2D g) {
+
+        if (anuncioBonus <= 0 || textoBonus.isEmpty()) {
+            return;
+        }
+
+        int alpha = Math.max(0, Math.min(255, anuncioBonus * 3));
+
+        g.setFont(new Font("Monospaced", Font.BOLD, 20));
+
+        int larg = g.getFontMetrics().stringWidth(textoBonus);
+        int cx = Main.CAMPO_X + Main.CAMPO_W / 2 - larg / 2;
+        int cy = Main.CAMPO_Y + Main.CAMPO_H / 3 + 40;
+
+        g.setColor(new Color(0, 0, 0, alpha));
+        g.drawString(textoBonus, cx + 2, cy + 2);
+
+        g.setColor(ultimaCapturaLimpa ? new Color(160, 255, 190, alpha)
+                                      : new Color(255, 170, 150, alpha));
+        g.drawString(textoBonus, cx, cy);
+    }
+
+    /**
+     * O nome do spell card, DESCENDO pela tela.
+     *
+     * Ele entra por cima do campo, desliza pra baixo ate a altura de
+     * descanso, fica ali a maior parte do tempo e no fim sobe de volta,
+     * apagando la em cima.
+     *
+     * Antes ele so aparecia parado no meio do campo e sumia por
+     * transparencia. O problema disso nao e ser feio, e ser AMBIGUO: um
+     * texto imovel no meio da tela parece parte da interface, e o jogador
+     * fica esperando ter que fazer alguma coisa com ele. Um texto que
+     * entra, passa e vai embora se le como ANUNCIO — voce sabe, sem
+     * ninguem explicar, que aquilo nao vai ficar ali atrapalhando.
+     *
+     * Os tres tempos sao fracoes do proprio anuncio, entao mexer no
+     * chefe.ticksAnuncio estica ou encurta tudo junto sem desmontar o
+     * movimento.
+     */
     private void desenharAnuncio(Graphics2D g) {
 
         if (anuncio <= 0 || !temSpellAtivo()) {
             return;
         }
 
-        // Some suavemente no fim do anuncio.
-        int alpha = (int) (255 * Math.min(1.0, anuncio / (double) Math.max(1, ticksAnuncio / 2)));
+        // 0 no comeco do anuncio, 1 no fim.
+        double f = 1 - anuncio / (double) Math.max(1, ticksAnuncio);
+
+        double entrada = 0.22;   // descendo
+        double saida   = 0.72;   // subindo de volta
+
+        double yTopo = Main.CAMPO_Y - 40;                      // fora, em cima
+        double yDescanso = Main.CAMPO_Y + Main.CAMPO_H / 3.0;  // onde ele para
+
+        double y;
+        int alpha;
+
+        if (f < entrada) {
+
+            // DESCE. A curva desacelera no fim (1-(1-t)^3) pra ele
+            // "assentar" na posicao em vez de bater e parar seco.
+            double t = f / entrada;
+            double suave = 1 - Math.pow(1 - t, 3);
+
+            y = yTopo + (yDescanso - yTopo) * suave;
+            alpha = (int) (255 * Math.min(1, t * 2));
+
+        } else if (f < saida) {
+
+            y = yDescanso;
+            alpha = 255;
+
+        } else {
+
+            // SOBE e apaga. Acelera (t^2): ele sai de cena com pressa, o
+            // que e o oposto da entrada e fecha o movimento.
+            double t = (f - saida) / (1 - saida);
+
+            y = yDescanso + (yTopo - yDescanso) * (t * t);
+            alpha = (int) (255 * (1 - t));
+        }
+
         alpha = Math.max(0, Math.min(255, alpha));
+
+        if (alpha <= 0) {
+            return;
+        }
 
         g.setFont(new Font("Monospaced", Font.BOLD, 24));
 
         String nome = spellCards[spellAtual].getNome();
         int larguraTexto = g.getFontMetrics().stringWidth(nome);
         int cx = Main.CAMPO_X + Main.CAMPO_W / 2 - larguraTexto / 2;
-        int cy = Main.CAMPO_Y + Main.CAMPO_H / 3;
 
         // Sombra preta atras, pra ler mesmo com a tela cheia de bala.
         g.setColor(new Color(0, 0, 0, alpha));
-        g.drawString(nome, cx + 2, cy + 2);
+        g.drawString(nome, cx + 2, (int) y + 2);
 
         g.setColor(new Color(255, 210, 230, alpha));
-        g.drawString(nome, cx, cy);
+        g.drawString(nome, cx, (int) y);
     }
 
     /* =========================
@@ -438,6 +926,11 @@ public class BossEnemy extends Enemy {
 
     public int getTotalDeSpellCards() {
         return spellCards.length;
+    }
+
+    /** true se o jogador ainda nao morreu nem bombou neste spell card. */
+    public boolean isSpellLimpo() {
+        return !spellSujo;
     }
 
     public boolean isInvulneravel() {

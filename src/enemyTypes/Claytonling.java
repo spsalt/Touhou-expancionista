@@ -75,11 +75,37 @@ public class Claytonling extends Enemy {
     /** Direcao da fuga, travada no momento em que ele desiste. */
     private double fugaX = 0, fugaY = -1;
 
+    /**
+     * CHUTADOR: este claytonling tambem lanca bolas de futebol em arco.
+     *
+     * Nem todos chutam, e isso e o ponto. Se todos chutassem, o ataque
+     * inteiro viraria chuva de bola e o comportamento de perseguir —
+     * que e a identidade do claytonling — sumiria por baixo. Com uma
+     * parte deles chutando, o jogador tem que olhar pra cada um e decidir
+     * se aquele ali e uma coisa que persegue ou uma coisa que atira, o
+     * que e uma pergunta muito mais interessante que "pra onde eu corro".
+     */
+    private final boolean chutador;
+
+    /** Ticks ate o proximo chute (so vale se for chutador). */
+    private int ateOChute;
+
     public Claytonling(double x, double y) {
+        this(x, y, false);
+    }
+
+    public Claytonling(double x, double y, boolean chutador) {
 
         super(x, y,
               Config.getDouble("clayton.claytonling.hp", 4.0),
               Config.getDouble("clayton.claytonling.raio", 13.0));
+
+        this.chutador = chutador;
+
+        // Cada um comeca com um atraso diferente, senao os chutadores da
+        // mesma leva soltam bola no mesmo frame e viram uma parede so.
+        this.ateOChute = 30 + (int) (Math.random()
+                       * Math.max(1, Config.getInt("clayton.claytonling.cadenciaDoChute", 90)));
 
         this.velocidadePerseguicao = Config.getDouble("clayton.claytonling.velocidade", 2.6);
         this.velocidadeFuga        = Config.getDouble("clayton.claytonling.velocidadeFuga", 7.0);
@@ -110,7 +136,48 @@ public class Claytonling extends Enemy {
 
         if (isAlive) {
             colidirComJogador();
+            talvezChutar();
         }
+    }
+
+    /**
+     * O chute do claytonling chutador: uma bola em arco no jogador.
+     *
+     * So enquanto ele ainda esta APROXIMANDO. Na investida ele ja travou a
+     * rota e o corpo dele e o ataque; chutar tambem ali seria cobrar duas
+     * coisas ao mesmo tempo do mesmo inimigo, sem aviso separado pra
+     * nenhuma das duas. E quem esta fugindo nao ataca — e a recompensa por
+     * ter desviado.
+     */
+    private void talvezChutar() {
+
+        if (!chutador || estado != Estado.APROXIMANDO || Main.player == null) {
+            return;
+        }
+
+        ateOChute--;
+
+        if (ateOChute > 0) {
+            return;
+        }
+
+        ateOChute = Math.max(20, Config.getInt("clayton.claytonling.cadenciaDoChute", 90));
+
+        src.Som.tocar(src.Som.CHUTE);
+
+        // Mesma balistica invertida da criatura do anticodigo: fixado o
+        // tempo de voo, a velocidade que leva ate o jogador em exatamente
+        // T ticks tem componente vertical negativo — ou seja, sobe antes
+        // de cair. Ver AnticodigoEnemy.chutar.
+        int T = Math.max(20, Config.getInt("clayton.claytonling.tempoDeVooDoChute", 85));
+        double g = Config.getDouble("clayton.claytonling.gravidadeDoChute", 0.18);
+
+        double dx = (Main.player.getX() - x) / T;
+        double dy = (Main.player.getY() - y) / T - g * T / 2.0;
+
+        Main.bullets.add(new src.bulletTypes.BolaBullet(
+            x, y, dx, dy, g,
+            Config.getDouble("clayton.claytonling.raioDaBola", 9)));
     }
 
     /**

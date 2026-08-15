@@ -132,6 +132,17 @@ public class LatexSpell extends SpellCard {
     private int intervaloDeDano;
     private int cooldownDano = 0;
 
+    /** Ticks restantes com a pagina apagada pela GPT Expansion. */
+    private int apagadaPor = 0;
+
+    /**
+     * Tempo do spell card, copiado pro render poder ler.
+     *
+     * O render() de um SpellCard nao recebe o 't' (a maioria dos ataques
+     * nao desenha nada e nao precisaria), entao quem precisa guarda.
+     */
+    private int tAtual = 0;
+
     /** Quanto do raio do jogador conta contra a tinta (0 a 1). */
     private final double fatorHitbox;
 
@@ -287,10 +298,47 @@ public class LatexSpell extends SpellCard {
         desenharComEspacamento(g, fm, marca, x, y);
     }
 
+    /**
+     * A GPT Expansion apagou a pagina.
+     *
+     * A bomba limpa toda BALA do campo, mas o artigo nao e feito de balas
+     * — e um bloco de texto com colisao por mascara de pixel. Resultado:
+     * a tela ficava limpa em volta e o texto continuava descendo em cima
+     * do jogador. Do ponto de vista de quem joga, a bomba nao funcionava
+     * neste ataque, e uma bomba que as vezes nao funciona e pior do que
+     * nao ter bomba nenhuma.
+     *
+     * Nao encerra o spell card: o Clayton continua com o HP que tem e a
+     * pagina VOLTA depois. O que a bomba compra e o mesmo que ela compra
+     * em qualquer outro ataque — alguns segundos de campo livre pra sair
+     * de onde voce estava prestes a morrer.
+     */
+    @Override
+    public void anularPorBomba(BossEnemy chefe) {
+
+        apagadaPor = Math.max(apagadaPor,
+                Config.getInt("clayton.latex.ticksApagadaPelaBomba", 150));
+
+        // Volta do topo em vez de continuar de onde parou: reaparecer no
+        // meio de um paragrafo denso, exatamente onde o jogador ja estava
+        // encurralado, desfaria o alivio que a bomba acabou de dar.
+        offset = 0;
+        cooldownDano = 0;
+    }
+
     @Override
     public void atacar(int t, BossEnemy chefe) {
 
+        tAtual = t;
+
         if (t < ticksDeEspera || mascara == null) {
+            return;
+        }
+
+        // Apagada pela bomba: nao desce, nao machuca e nao e desenhada
+        // (ver render). Ela volta sozinha quando o contador zera.
+        if (apagadaPor > 0) {
+            apagadaPor--;
             return;
         }
 
@@ -368,12 +416,53 @@ public class LatexSpell extends SpellCard {
             return;
         }
 
+        // Apagada pela bomba. Some por inteiro em vez de ficar
+        // semitransparente: se ela continuasse visivel, o jogador nao
+        // saberia se ainda machuca — e passaria o alivio inteiro
+        // desviando de um texto que nao faz mais nada.
+        if (apagadaPor > 0) {
+            return;
+        }
+
         int h = mascara.getHeight();
         int y0 = Main.CAMPO_Y + (int) offset - h;
+
+        // O AVISO: enquanto o artigo ainda nao machuca, ele PISCA.
+        //
+        // Antes ele aparecia solido e imovel durante os cem ticks de
+        // espera, e nesse tempo era so cenario — mas nada na tela dizia
+        // isso. O jogador ou tratava um texto inofensivo como parede (e
+        // desperdicava a esquiva) ou se acostumava com ele e tomava a
+        // primeira linha na cara quando o texto ganhou vida.
+        //
+        // Piscando, a leitura vira uma so: "isto ainda nao vale, mas vai
+        // valer". E o pisca ACELERA conforme a hora chega, entao a
+        // contagem regressiva esta no proprio ritmo — nao precisa de
+        // numero nenhum.
+        java.awt.Composite composto = g.getComposite();
+
+        if (tAtual < ticksDeEspera) {
+
+            double f = tAtual / (double) Math.max(1, ticksDeEspera);
+
+            // Frequencia de 0,12 a 0,55 rad/tick: comeca num pulso lento e
+            // termina num tremido nervoso.
+            double freq = 0.12 + 0.43 * f;
+
+            // Fica entre 15% e 55% de opacidade. Nunca chega a sumir de
+            // vez: o jogador precisa ver ONDE o texto vai estar pra poder
+            // escolher onde se posicionar antes dele valer.
+            float alpha = (float) (0.35 + 0.20 * Math.sin(tAtual * freq));
+
+            g.setComposite(java.awt.AlphaComposite.getInstance(
+                    java.awt.AlphaComposite.SRC_OVER, Math.max(0.12f, Math.min(1f, alpha))));
+        }
 
         // Duas copias emendadas cobrem o campo em qualquer posicao do loop.
         for (int y = y0; y < Main.CAMPO_Y + Main.CAMPO_H; y += h) {
             g.drawImage(mascara, Main.CAMPO_X, y, null);
         }
+
+        g.setComposite(composto);
     }
 }

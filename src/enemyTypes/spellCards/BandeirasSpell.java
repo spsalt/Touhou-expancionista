@@ -12,7 +12,7 @@ import src.bulletTypes.BandeiraBullet;
 import src.enemyTypes.BossEnemy;
 
 /**
- * SPELL CARD - "⚑ Tratado de Não-Proliferação"
+ * SPELL CARD - "⚑ Tratado de Proliferação"
  *
  * O PAPA convoca bandeiras de paises sorteados. Cada uma nasce num ponto
  * do campo, gira mirando o jogador e, passados alguns ticks, avanca em
@@ -56,6 +56,15 @@ public class BandeirasSpell extends SpellCard {
     /** Abertura do arco de nascimento, em radianos. */
     private final double aberturaDoArco;
 
+    /** De qual metade do arco sai a proxima leva. Alterna a cada uma. */
+    private boolean ladoEsquerdo = true;
+
+    /** Em que tick sai a proxima leva. Substitui o "t % intervalo". */
+    private int proximaLeva = 0;
+
+    /** Quanto do intervalo original sobra no FIM do ataque. */
+    private final double fracaoFinal;
+
     private Random rng;
 
     /** Nome do ultimo pais sorteado, so pra mostrar na tela. */
@@ -66,7 +75,12 @@ public class BandeirasSpell extends SpellCard {
 
     public BandeirasSpell() {
 
-        super("⚑  Tratado de Não-Proliferação",
+        // O nome era "Tratado de NAO-Proliferacao", e estava dizendo o
+        // contrario do ataque: o PAPA quer PROLIFERAR o virus ("ja sei
+        // onde proliferaremos nosso virus depois de te derrotar", linha
+        // 66), e cada bandeira e um pais da lista dele. O "nao" invertia a
+        // piada inteira.
+        super("⚑  Tratado de Proliferação",
               Config.getDouble("papa.bandeiras.hp", 420),
               Config.getInt("papa.bandeiras.duracao", 2000));
 
@@ -79,8 +93,27 @@ public class BandeirasSpell extends SpellCard {
         this.velocidade   = Config.getDouble("papa.bandeiras.velocidade", 5.2);
         this.raio         = Config.getDouble("papa.bandeiras.raio", 11.0);
 
+        this.fracaoFinal = Math.max(0.2, Math.min(1.0,
+                Config.getDouble("papa.bandeiras.fracaoFinalDoIntervalo", 0.5)));
+
         this.raioDeSpawn    = Config.getDouble("papa.bandeiras.raioDeSpawn", 170);
         this.aberturaDoArco = Config.getDouble("papa.bandeiras.aberturaDoArco", 2.4);
+    }
+
+    /**
+     * De quantos em quantos ticks sai a proxima leva, AGORA.
+     *
+     * Interpola do intervalo cheio ate a fracao final ao longo do ataque.
+     * Note que o inicio NAO e afrouxado: o valor de partida e o mesmo
+     * intervalo de antes, e a aceleracao so tira tempo dali pra frente.
+     */
+    private int intervaloAgora(int t) {
+
+        double f = Math.max(0, Math.min(1, t / (double) Math.max(1, duracao)));
+
+        double fator = 1.0 - (1.0 - fracaoFinal) * f;
+
+        return Math.max(8, (int) Math.round(intervaloEntreLevas * fator));
     }
 
     @Override
@@ -91,6 +124,8 @@ public class BandeirasSpell extends SpellCard {
 
         ultimoPais = "";
         mostrarNome = 0;
+        ladoEsquerdo = rng.nextBoolean();
+        proximaLeva = 0;
     }
 
     @Override
@@ -100,11 +135,36 @@ public class BandeirasSpell extends SpellCard {
             mostrarNome--;
         }
 
-        if (t % intervaloEntreLevas != 0) {
+        // A CADENCIA ACELERA AO LONGO DO ATAQUE.
+        //
+        // Intervalo fixo tem um problema de forma: o ataque e igual no
+        // primeiro e no ultimo segundo, entao ou ele comeca duro demais ou
+        // termina facil demais. Acelerando, ele COMECA no ritmo que ja era
+        // (nao ha alivio de cortesia no inicio) e vai fechando ate o dobro
+        // da pressao no fim.
+        //
+        // A conta e sobre o PROXIMO disparo e nao sobre "t % intervalo",
+        // porque com intervalo variavel o modulo pularia levas: mudar o
+        // divisor no meio faz o resto saltar.
+        if (t < proximaLeva) {
             return;
         }
 
-        lancarLeva(chefe);
+        proximaLeva = t + intervaloAgora(t);
+
+        // DOIS LEQUES SE REVEZANDO: um da metade esquerda do arco, o
+        // proximo da direita, e assim por diante.
+        //
+        // Antes era um leque unico cobrindo o arco inteiro, mais espacado
+        // no tempo. O problema e que um leque largo tem uma resposta so —
+        // sair pela borda mais proxima — e depois disso sobra tempo ocioso
+        // ate a proxima leva. Meia largura pela metade do tempo mantem a
+        // mesma quantidade de bandeira no ar, mas o jogador nunca fica sem
+        // ter o que fazer, e o lado de onde vem a proxima e previsivel:
+        // ele ALTERNA, entao da pra se preparar em vez de adivinhar.
+        lancarLeva(chefe, ladoEsquerdo);
+
+        ladoEsquerdo = !ladoEsquerdo;
     }
 
     /**
@@ -116,13 +176,16 @@ public class BandeirasSpell extends SpellCard {
      * que e o que a gente quer: o jogador aprende o padrao, mas a tela
      * nunca fica igual duas vezes.
      */
-    private void lancarLeva(BossEnemy chefe) {
+    private void lancarLeva(BossEnemy chefe, boolean pelaEsquerda) {
+
+        // Cada leva usa METADE do arco. A esquerda vai de -abertura/2 ate
+        // o centro; a direita, do centro ate +abertura/2.
+        double inicio = pelaEsquerda ? -aberturaDoArco / 2 : 0;
 
         for (int i = 0; i < porLeva; i++) {
 
-            // -abertura/2 .. +abertura/2 em volta do "pra baixo" (PI/2).
             double f = (porLeva == 1) ? 0.5 : i / (double) (porLeva - 1);
-            double anguloNoArco = Math.PI / 2 - aberturaDoArco / 2 + aberturaDoArco * f;
+            double anguloNoArco = Math.PI / 2 + inicio + (aberturaDoArco / 2) * f;
 
             double px = chefe.getX() + Math.cos(anguloNoArco) * raioDeSpawn;
             double py = chefe.getY() + Math.sin(anguloNoArco) * raioDeSpawn;
@@ -141,7 +204,8 @@ public class BandeirasSpell extends SpellCard {
                 px, py, pais,
                 anguloNoArco,           // ja comeca apontando pra baixo
                 ticksDeMira, ticksTravada,
-                taxaDeGiro, velocidade, raio
+                taxaDeGiro, velocidade, raio,
+                i == 0                  // so a primeira toca o som da leva
             ));
         }
     }

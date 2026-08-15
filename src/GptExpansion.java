@@ -53,6 +53,10 @@ public class GptExpansion {
      */
     private final List<Enemy> jaAtingidos = new ArrayList<>();
 
+    /** Contadores da conversao de bala em item (ver converterEmItem). */
+    private int balasApagadas = 0;
+    private int itensSoltos = 0;
+
     /* --- ajustes lidos do game.properties --- */
 
     private final double raioMaximo;
@@ -148,10 +152,25 @@ public class GptExpansion {
             jaAtingidos.add(inimigo);
 
             if (inimigo instanceof BossEnemy) {
+
                 // CHEFE nao morre de bomba: leva um dano fixo e forte.
                 // Deixar a bomba matar tornaria qualquer spell card
                 // trivial — bastava guardar cargas e pular a luta.
                 inimigo.levarDano(danoEmChefe);
+
+                // E avisa o ataque em andamento pra ele se apagar tambem.
+                //
+                // A limpeza de balas logo abaixo cobre 99% dos ataques,
+                // mas nao os que NAO sao feitos de bala: a pagina de
+                // LaTeX do Clayton continuava descendo em cima do jogador
+                // com a tela limpa em volta. Quem sabe o que precisa
+                // sumir e o proprio spell card (ver
+                // SpellCard.anularPorBomba), nao esta classe.
+                BossEnemy chefe = (BossEnemy) inimigo;
+
+                if (chefe.getSpellCardAtual() != null) {
+                    chefe.getSpellCardAtual().anularPorBomba(chefe);
+                }
             } else {
                 // Inimigo comum morre na hora, mas passando pelo
                 // levarDano() normal: pontos e drop saem de graca.
@@ -170,9 +189,52 @@ public class GptExpansion {
             double dist = Main.getDist(x, y, bala.getX(), bala.getY());
 
             if (dist <= raioAtual + bala.getRadius()) {
+
                 bala.setAlive(false);
+
+                // BALA APAGADA VIRA ITEM.
+                //
+                // E a regra da serie: bombar no meio de uma parede de bala
+                // devolve alguma coisa, entao usar a bomba num momento
+                // ruim ainda rende. Sem isso a bomba era so uma saida de
+                // emergencia, e guardar ela pra sempre era sempre a
+                // jogada certa.
+                //
+                // NAO e uma por bala. Uma bomba no RED RECOGNA apaga umas
+                // 400: quatrocentos itens seria uma chuva que trava a tela
+                // e um pulo de nivel de graca. Sai um item a cada N
+                // apagadas, com teto.
+                converterEmItem(bala.getX(), bala.getY());
             }
         }
+    }
+
+    /**
+     * Conta as balas apagadas e cospe um item de tempos em tempos.
+     *
+     * A proporcao de moeda e a mesma do resto do jogo (uma a cada tres),
+     * pra a bomba nao virar uma fonte de dinheiro melhor que jogar.
+     */
+    private void converterEmItem(double bx, double by) {
+
+        int aCada = Math.max(1, Config.getInt("gptExpansao.balasPorItem", 6));
+        int teto  = Math.max(0, Config.getInt("gptExpansao.maximoDeItens", 28));
+
+        balasApagadas++;
+
+        if (balasApagadas % aCada != 0 || itensSoltos >= teto) {
+            return;
+        }
+
+        itensSoltos++;
+
+        int moedaACada = Math.max(1, Config.getInt("moeda.umaMoedaACada", 3));
+
+        Point.Tipo tipo = (itensSoltos % moedaACada == 0)
+                        ? Point.Tipo.MOEDA
+                        : Point.Tipo.XP;
+
+        Main.points.add(new Point(bx, by, false, tipo));
     }
 
     /* =========================

@@ -36,6 +36,15 @@ public class Musica {
     /** Caminho da faixa aberta agora. Evita reabrir a mesma a toa. */
     private String faixaAtual = null;
 
+    /**
+     * A faixa atual repete quando chega ao fim?
+     *
+     * Quase todas repetem — sao trilha de ambiente. A excecao e a musica
+     * da cerimonia da armadura, que e um trecho com clímax e fim: em loop
+     * ela recomecava do zero no meio da cena.
+     */
+    private boolean repetir = true;
+
     public Musica() {
         carregarConfig();
     }
@@ -52,8 +61,12 @@ public class Musica {
             return;
         }
 
-        abrir(Config.getString("musica.arquivo", "audio/fase1.wav"));
-        ajustarVolume();
+        String inicial = Config.getString("musica.arquivo", "");
+
+        if (inicial != null && !inicial.trim().isEmpty()) {
+            abrir(inicial);
+            ajustarVolume();
+        }
     }
 
     /**
@@ -65,13 +78,45 @@ public class Musica {
      * tick(), ou seja, sessenta vezes por segundo.
      */
     public void trocarFaixa(String caminho) {
+        trocarFaixa(caminho, true);
+    }
 
-        if (!ligada || caminho == null || caminho.equals(faixaAtual)) {
+    /**
+     * Igual ao anterior, mas deixando escolher se a faixa REPETE.
+     *
+     * Quase toda trilha do jogo e ambiente e tem que repetir pra sempre.
+     * A da cerimonia da armadura nao: ela e um trecho com comeco, clímax e
+     * fim, com uns oito segundos de silencio no rabo. Em loop, ela
+     * recomecava do zero no meio da cena e a musica que devia MARCAR o
+     * momento passava a atrapalhar ele.
+     */
+    public void trocarFaixa(String caminho, boolean emLoop) {
+
+        this.repetir = emLoop;
+
+        if (!ligada) {
+            return;
+        }
+
+        // Normaliza "sem trilha": null e string vazia sao a mesma coisa.
+        // O properties nao tem como escrever null, entao a chave vazia
+        // (musica.arquivo=) precisa significar SILENCIO.
+        String pedido = (caminho == null || caminho.trim().isEmpty()) ? null : caminho;
+
+        if (pedido == null ? faixaAtual == null : pedido.equals(faixaAtual)) {
             return;
         }
 
         pararEFechar();
-        abrir(caminho);
+
+        // Pediram silencio: fecha e nao abre nada. E o caso dos trechos
+        // ENTRE as lutas — cada tema de chefe entra numa tela sem musica,
+        // o que faz a entrada dele valer muito mais.
+        if (pedido == null) {
+            return;
+        }
+
+        abrir(pedido);
         ajustarVolume();
 
         tocarDoInicio();
@@ -111,7 +156,7 @@ public class Musica {
             CONTROLES
        ========================= */
 
-    /** Toca do inicio, em loop continuo. Chamado ao comecar a cutscene/fase. */
+    /** Toca do inicio. Repete ou nao conforme a faixa (ver 'repetir'). */
     public void tocarDoInicio() {
 
         if (!pronta) {
@@ -119,14 +164,30 @@ public class Musica {
         }
 
         clip.setFramePosition(0);
-        clip.loop(Clip.LOOP_CONTINUOUSLY);
+
+        if (repetir) {
+            clip.loop(Clip.LOOP_CONTINUOUSLY);
+        } else {
+            // start() toca UMA vez e para sozinho no fim.
+            clip.start();
+        }
     }
 
     /** Retoma de onde parou (usado ao sair do Pause). */
     public void continuar() {
 
-        if (pronta && !clip.isRunning()) {
+        if (!pronta || clip.isRunning()) {
+            return;
+        }
+
+        // Retomar uma faixa que NAO repete e delicado: se ela ja tinha
+        // acabado antes do pause, um loop aqui a faria comecar de novo do
+        // nada. Por isso a de uma vez so retoma com start(), que nao
+        // reinicia nada se o clipe ja chegou ao fim.
+        if (repetir) {
             clip.loop(Clip.LOOP_CONTINUOUSLY);
+        } else {
+            clip.start();
         }
     }
 

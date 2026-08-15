@@ -64,6 +64,22 @@ public abstract class SpellCard {
     }
 
     /**
+     * A GPT Expansion estourou: apague o que voce tiver na tela.
+     *
+     * A bomba ja limpa toda BALA do campo sozinha, entao pra quase todo
+     * ataque isto nao precisa fazer nada — e por isso o padrao e vazio.
+     *
+     * Existe pros ataques que NAO sao feitos de bala e por isso escapavam
+     * da limpeza: a pagina de LaTeX do Clayton e um bloco de texto com
+     * colisao por mascara, e ela continuava descendo em cima do jogador
+     * enquanto a tela inteira era limpa em volta dela. Do ponto de vista
+     * de quem joga, a bomba simplesmente nao funcionava naquele ataque —
+     * e uma bomba que as vezes nao funciona e pior que nao ter bomba.
+     */
+    public void anularPorBomba(BossEnemy chefe) {
+    }
+
+    /**
      * Desenho proprio do ataque, chamado pelo BossEnemy ANTES do sprite
      * da chefe. Vazio por padrao — o ataque comum nao desenha nada, quem
      * aparece na tela sao as balas que ele criou.

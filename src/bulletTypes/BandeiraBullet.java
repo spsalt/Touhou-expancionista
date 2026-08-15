@@ -63,9 +63,30 @@ public class BandeiraBullet extends Bullet {
     /** Lado do quadrado que a bandeira ocupa na tela. */
     private final double tamanho;
 
+    /**
+     * Esta bandeira e a "porta-voz" da leva?
+     *
+     * Uma leva inteira trava e sai no MESMO frame. Se cada uma tocasse o
+     * proprio efeito, seriam seis copias empilhadas do mesmo som — que
+     * nao soa seis vezes mais importante, soa quebrado. So a primeira
+     * fala pelo grupo.
+     */
+    private final boolean comSom;
+
     public BandeiraBullet(double x, double y, Bandeira bandeira, double anguloInicial,
                           int ticksDeMira, int ticksTravada,
                           double taxaDeGiro, double velocidade, double raio) {
+
+        this(x, y, bandeira, anguloInicial, ticksDeMira, ticksTravada,
+             taxaDeGiro, velocidade, raio, true);
+    }
+
+    public BandeiraBullet(double x, double y, Bandeira bandeira, double anguloInicial,
+                          int ticksDeMira, int ticksTravada,
+                          double taxaDeGiro, double velocidade, double raio,
+                          boolean comSom) {
+
+        this.comSom = comSom;
 
         this.x = x;
         this.y = y;
@@ -96,14 +117,20 @@ public class BandeiraBullet extends Bullet {
                 if (restam <= 0) {
                     estado = Estado.TRAVADA;
                     restam = ticksTravada;
-                    Som.tocar(Som.PAPA_MIRA);
+
+                    if (comSom) {
+                        Som.tocar(Som.PAPA_MIRA);
+                    }
                 }
                 break;
 
             case TRAVADA:
                 if (restam <= 0) {
                     estado = Estado.AVANCANDO;
-                    Som.tocar(Som.PAPA_AVANCA);
+
+                    if (comSom) {
+                        Som.tocar(Som.PAPA_AVANCA);
+                    }
                 }
                 break;
 

@@ -74,7 +74,7 @@ public class XadrezSpell extends SpellCard {
             return;
         }
 
-        Som.tocar(Som.TIRO_INIMIGO);
+        Som.tocar(Som.XADREZ_LANCE);
 
         for (int i = 0; i < pecasPorLevada; i++) {
 

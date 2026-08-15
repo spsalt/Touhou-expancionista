@@ -75,7 +75,7 @@ public class IntegralSpell extends SpellCard {
             return;
         }
 
-        Som.tocar(Som.TIRO_INIMIGO);
+        Som.tocar(Som.ADRIANA_GLIFO);
 
         // Gira o simbolo um pouco a cada disparo (angulo aureo-ish: nunca
         // repete a mesma inclinacao em disparos proximos).

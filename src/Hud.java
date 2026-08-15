@@ -4,6 +4,7 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.FontMetrics;
 import java.awt.image.BufferedImage;
 
 /**
@@ -27,6 +28,7 @@ public class Hud {
     private static final int Y_SUBTITULO      = 60;
     private static final int Y_PONTOS_LABEL   = 104;
     private static final int Y_PONTOS_VALOR   = 122;
+    private static final int Y_GRAZE          = 140;
     private static final int Y_VIDAS_LABEL    = 158;
     private static final int Y_VIDAS_ICONES   = 176;
     private static final int Y_GPT_LABEL      = 206;
@@ -34,6 +36,7 @@ public class Hud {
     private static final int Y_NIVEL_LABEL    = 270;
     private static final int Y_BARRA_XP       = 280;
     private static final int Y_AUTOFIRE       = 356;
+    private static final int Y_CARTEIRA       = 386;
 
     private static final int TAMANHO_BOTAO_GPT = 34;
 
@@ -67,6 +70,11 @@ public class Hud {
         g.drawString(String.format("%09d", Main.player.getPontuacao()),
                      painelX, Main.CAMPO_Y + Y_PONTOS_VALOR);
 
+        // Graze ao lado da pontuacao: as duas contam a mesma coisa (o
+        // quao bem voce jogou), e ficam juntas de proposito.
+        g.setColor(new Color(150, 210, 255));
+        g.drawString("Graze " + Main.player.getGraze(), painelX, Main.CAMPO_Y + Y_GRAZE);
+
         g.setColor(Color.WHITE);
         g.drawString("Vidas", painelX, Main.CAMPO_Y + Y_VIDAS_LABEL);
         desenharIcones(g, painelX, Main.CAMPO_Y + Y_VIDAS_ICONES, Main.player.getVidas(),
@@ -82,6 +90,7 @@ public class Hud {
 
         desenharBarraDeXp(g, painelX, Main.CAMPO_Y + Y_BARRA_XP);
         desenharTiposDeTiro(g);
+        desenharCarteiraEItens(g);
 
         // Estado do tiro automatico: verde ligado, cinza desligado.
         boolean auto = Main.player.isAutofire();
@@ -90,6 +99,161 @@ public class Hud {
         g.drawString("AUTO " + (auto ? "ON " : "OFF") + "  [C]", painelX, Main.CAMPO_Y + Y_AUTOFIRE);
 
         desenharControles(g);
+
+        // Por ULTIMO e fora de qualquer recorte: e o aviso mais urgente da
+        // tela e nao pode ficar por baixo de nada.
+        desenharAvisoDeDeathbomb(g);
+    }
+
+    /**
+     * O "V" GIGANTE no canto inferior direito enquanto a morte esta marcada.
+     *
+     * O deathbomb ja existia: quando voce e atingido, ainda ha alguns
+     * frames em que apertar V cancela a morte. O problema e que a janela
+     * dura 12 ticks — um quinto de segundo — e o unico aviso ficava DENTRO
+     * do campo, em cima do jogador, no meio de uma parede de bala. Ou
+     * seja, exatamente onde o olho ja esta sobrecarregado e no instante em
+     * que ele mais se perde.
+     *
+     * Aqui o aviso fica FORA do campo, num canto que nunca tem nada, e
+     * gigante. Nao e uma ajuda de dificuldade: a janela continua com o
+     * mesmo tamanho e a decisao continua sendo do jogador. O que muda e
+     * ele ficar sabendo que a decisao existe.
+     *
+     * O V PULSA e ENCOLHE junto com o tempo restante. Um V estatico diria
+     * "aperte V"; encolhendo, ele diz "aperte V AGORA", que e outra coisa.
+     */
+    private void desenharAvisoDeDeathbomb(Graphics2D g) {
+
+        int restam = Main.player.getMorteEm();
+
+        if (restam <= 0) {
+            return;
+        }
+
+        // Sem armadura ou sem bomba nao ha saida — anunciar uma tecla que
+        // nao faz nada seria pior que nao anunciar nada.
+        if (!Main.player.temArmadura() || Main.player.getBombas() <= 0) {
+            return;
+        }
+
+        double f = restam / (double) Math.max(1, Main.player.getTicksDeathbomb());
+
+        int tamanho = (int) (Config.getInt("hud.tamanhoDoAvisoV", 150) * (0.75 + 0.25 * f));
+
+        int cx = Main.WIDTH - Config.getInt("hud.margemDoAvisoV", 90);
+        int cy = Main.HEIGHT - Config.getInt("hud.margemDoAvisoV", 90);
+
+        // Halo pulsando por tras: no canto escuro do painel, o contorno
+        // sozinho nao chamaria atencao periferica.
+        for (int i = 3; i >= 1; i--) {
+
+            int raio = (int) (tamanho * 0.42 * i * (0.8 + 0.2 * f));
+            int alpha = (int) (70 * f / i);
+
+            g.setColor(new Color(255, 230, 120, Math.max(0, Math.min(255, alpha))));
+            g.fillOval(cx - raio, cy - raio, raio * 2, raio * 2);
+        }
+
+        g.setFont(new Font("Monospaced", Font.BOLD, tamanho));
+
+        String texto = "V";
+        FontMetrics fm = g.getFontMetrics();
+
+        int tx = cx - fm.stringWidth(texto) / 2;
+        int ty = cy + fm.getAscent() / 3;
+
+        // Contorno preto grosso desenhando o texto deslocado em 8 direcoes:
+        // o V aparece por cima de qualquer coisa que esteja no painel.
+        g.setColor(new Color(0, 0, 0, 220));
+
+        for (int dx = -3; dx <= 3; dx += 3) {
+            for (int dy = -3; dy <= 3; dy += 3) {
+                if (dx != 0 || dy != 0) {
+                    g.drawString(texto, tx + dx, ty + dy);
+                }
+            }
+        }
+
+        g.setColor(new Color(255, 235, 130));
+        g.drawString(texto, tx, ty);
+
+        // A palavra embaixo, pequena: o V sozinho diz a tecla, nao diz o
+        // que ela faz. Quem ja sabe nem le; quem nao sabe, le uma vez.
+        g.setFont(new Font("Monospaced", Font.BOLD, 15));
+
+        String rotulo = "BOMBA!";
+        int lr = g.getFontMetrics().stringWidth(rotulo);
+
+        g.setColor(new Color(0, 0, 0, 200));
+        g.drawString(rotulo, cx - lr / 2 + 1, cy + tamanho / 2 + 9);
+
+        g.setColor(new Color(255, 200, 120));
+        g.drawString(rotulo, cx - lr / 2, cy + tamanho / 2 + 8);
+    }
+
+    /**
+     * A linha do Point of Collection: uma marca tracejada mostrando ate
+     * onde subir pra puxar todos os itens.
+     *
+     * Uma mecanica que o jogador nao consegue VER nao existe. Ela some
+     * quando ele ja esta acima dela — nesse ponto ja cumpriu o papel, e
+     * uma linha atravessando a tela no meio de um padrao de bala so
+     * atrapalharia a leitura.
+     */
+    private void desenharLinhaDeColeta(Graphics2D g) {
+
+        if (Main.player == null || !Main.gameState.equals("Game")) {
+            return;
+        }
+
+        int y = (int) Main.player.getLinhaDeColetaTotal();
+
+        if (Main.player.getY() <= y) {
+            return;
+        }
+
+        g.setColor(new Color(120, 200, 255, 55));
+
+        for (int x = Main.CAMPO_X; x < Main.CAMPO_X + Main.CAMPO_W; x += 16) {
+            g.drawLine(x, y, x + 8, y);
+        }
+    }
+
+    /**
+     * A carteira de pesos cubanos e os itens comprados do Perea.
+     *
+     * Os dois itens ativaveis so aparecem DEPOIS de comprados. Mostrar
+     * "[1] OLHO LASER 0" desde o comeco do jogo anunciaria uma mecanica
+     * que o jogador ainda nao tem como usar, e a lojinha so existe la na
+     * metade — o HUD ia estar mentindo por metade da partida.
+     */
+    private void desenharCarteiraEItens(Graphics2D g) {
+
+        int y = Main.CAMPO_Y + Y_CARTEIRA;
+
+        g.setFont(FONTE_TEXTO);
+        g.setColor(new Color(255, 210, 120));
+        g.drawString("★ " + Main.player.getMoedas() + " pesos", painelX, y);
+
+        y += 20;
+
+        if (Main.player.temCulturaMaker()) {
+            g.setColor(new Color(150, 255, 180));
+            g.drawString("CULTURA MAKER", painelX, y);
+            y += 18;
+        }
+
+        if (Main.player.getUsosDoOlhoLaser() > 0) {
+            g.setColor(new Color(255, 130, 130));
+            g.drawString("[1] OLHO LASER  " + Main.player.getUsosDoOlhoLaser(), painelX, y);
+            y += 18;
+        }
+
+        if (Main.player.getUsosDaAgricultura() > 0) {
+            g.setColor(new Color(150, 230, 110));
+            g.drawString("[2] AGRICULTURA " + Main.player.getUsosDaAgricultura(), painelX, y);
+        }
     }
 
     /**
@@ -103,7 +267,12 @@ public class Hud {
         g.drawString("GPT Expansion", painelX, Main.CAMPO_Y + Y_GPT_LABEL);
 
         Rectangle botao = getBotaoGptExpansaoBounds();
-        boolean disponivel = Main.player.getBombas() > 0;
+
+        // Antes da armadura (fim do estagio 1) o poder nem existe. O
+        // botao continua desenhado, apagado, pra o jogador saber que ele
+        // vai aparecer — sumir e reaparecer confundiria mais.
+        boolean temArmadura = Main.player.temArmadura();
+        boolean disponivel = temArmadura && Main.player.getBombas() > 0;
 
         Color corBorda = disponivel ? new Color(255, 220, 120) : new Color(80, 80, 90);
         Color corFundo = disponivel ? new Color(70, 55, 15) : new Color(30, 30, 36);
@@ -132,7 +301,10 @@ public class Hud {
 
         // Contador de cargas, ao lado do botao.
         g.setColor(disponivel ? new Color(255, 230, 150) : new Color(120, 120, 120));
-        g.drawString("x" + Main.player.getBombas(), botao.x + botao.width + 10, botao.y + botao.height - 10);
+
+        String rotulo = temArmadura ? ("x" + Main.player.getBombas()) : "TRAVADO";
+
+        g.drawString(rotulo, botao.x + botao.width + 10, botao.y + botao.height - 10);
     }
 
     /**
@@ -196,6 +368,8 @@ public class Hud {
     /** Contorno da arena, pra deixar claro onde as balas valem. */
     private void desenharMolduraDoCampo(Graphics2D g) {
 
+        desenharLinhaDeColeta(g);
+
         g.setColor(new Color(70, 70, 110));
         g.drawRect(Main.CAMPO_X - 1, Main.CAMPO_Y - 1, Main.CAMPO_W + 1, Main.CAMPO_H + 1);
 
@@ -218,10 +392,13 @@ public class Hud {
         int largura = 140;
         int altura = 8;
 
-        // No teto a barra fica cheia e dourada, em vez de travada em zero.
-        boolean max = Main.player.isNivelMaximo();
+        // No teto DOS ITENS a barra fica cheia, em vez de travada em zero
+        // pra sempre — e la que o XP para de virar nivel e passa a virar
+        // pontuacao. Sem isto o jogador via uma barra parada e concluia
+        // que estava com bug.
+        boolean noTeto = Main.player.isNoTetoDosItens();
 
-        double progresso = max
+        double progresso = noTeto
                          ? 1.0
                          : Main.player.getXp() / (double) Main.player.getXpParaProximoNivel();
 
@@ -230,7 +407,7 @@ public class Hud {
         g.setColor(new Color(40, 40, 60));
         g.fillRect(x, y, largura, altura);
 
-        g.setColor(max ? new Color(255, 220, 120) : new Color(150, 255, 150));
+        g.setColor(noTeto ? new Color(255, 220, 120) : new Color(150, 255, 150));
         g.fillRect(x, y, (int) (largura * progresso), altura);
 
         g.setColor(new Color(90, 90, 110));

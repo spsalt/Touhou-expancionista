@@ -3,6 +3,8 @@ package src.enemyTypes;
 import src.Config;
 import src.enemyTypes.spellCards.BandeirasSpell;
 import src.enemyTypes.spellCards.OptimumPathForestSpell;
+import src.enemyTypes.spellCards.RedRecognaSpell;
+import src.enemyTypes.spellCards.SeguidoresDoIeeeSpell;
 import src.enemyTypes.spellCards.SpellCard;
 import src.enemyTypes.spellCards.TuringSpell;
 
@@ -19,7 +21,8 @@ import src.enemyTypes.spellCards.TuringSpell;
  *     - ⚑ Tratado de Nao-Proliferacao  (bandeiras de paises sorteados)
  *     - ⊢ Maquina de Turing            (o jogador vira o cabecote da fita)
  *
- *   FORMA PAPA IA (linhas 69 a 72, depois da tela ficar branca)
+ *   FORMA PAPA IA (linhas 69 a 72, depois da tela ficar branca) — o
+ *   PAPA com a infeccao NO MAXIMO, nao o virus fora dele
  *     - ⊛ Optimum Path Forest          (o classificador do proprio Papa)
  *
  * A escolha dos ataques segue o roteiro de perto. O primeiro vem da fala
@@ -56,13 +59,20 @@ public class Papa extends BossEnemy {
 
     /**
      * Forma PAPA IA: depois de "NAOOOOO * tela toda fica branca *"
-     * (Roteiro.txt linha 69), o virus larga o corpo e vira software puro.
+     * (Roteiro.txt linha 69), o virus toma o PAPA POR INTEIRO.
+     *
+     * E a infeccao no maximo, e nao o virus abandonando o hospedeiro —
+     * por isso e a forma mais forte da luta e nao um resto dela. O virus
+     * so e expulso quando ESTA forma cai (linhas 72 a 75).
+     *
      * Um unico spell card, o mais pesado do jogo.
      */
     public static Papa criarFormaIA() {
 
         return new Papa(
             new SpellCard[] {
+                new SeguidoresDoIeeeSpell(),
+                new RedRecognaSpell(),
                 new OptimumPathForestSpell()
             },
             Config.getString("papa.spriteIA", "sprites/bosses/papa-IA_MALIGNA.png"),

@@ -94,22 +94,21 @@ public class XadrezBullet extends Bullet {
 
         this.rng = new Random(semente);
 
-        this.alvoX = x;
-        this.alvoY = y;
+        // O primeiro lance ja e escolhido AQUI, e nao quando a pausa
+        // acabar. E isso que permite anunciar o destino durante a pausa
+        // inteira — sem escolher antes, nao ha o que desenhar.
         this.pausa = this.pausaEntreLances;
+        escolherLance();
     }
 
     @Override
     public void tick() {
 
-        // Parada entre lances: e a janela de leitura do jogador.
+        // Parada entre lances: e a janela de leitura do jogador. O
+        // destino ja esta escolhido (ver escolherLance) e sendo anunciado
+        // pelo render — a peca so espera.
         if (pausa > 0) {
             pausa--;
-
-            if (pausa == 0) {
-                escolherLance();
-            }
-
             return;
         }
 
@@ -146,6 +145,8 @@ public class XadrezBullet extends Bullet {
             }
 
             pausa = pausaEntreLances;
+            escolherLance();
+
             return;
         }
 
@@ -236,6 +237,11 @@ public class XadrezBullet extends Bullet {
     @Override
     public void render(Graphics2D g) {
 
+        // O ANUNCIO vem antes da peca, pra ficar por baixo dela.
+        if (pausa > 0) {
+            desenharAnuncioDoLance(g);
+        }
+
         // Piscada durante a pausa: avisa que ela esta prestes a se mexer.
         boolean prestesAMover = pausa > 0 && pausa < 20 && (pausa / 4) % 2 == 0;
 
@@ -250,6 +256,80 @@ public class XadrezBullet extends Bullet {
         int alt = g.getFontMetrics().getAscent();
 
         g.drawString(s, (int) (x - larg / 2.0), (int) (y + alt / 2.5));
+    }
+
+    /**
+     * Mostra PRA ONDE a peca vai: casa de destino acesa e um pontilhado
+     * ligando ela ate la.
+     *
+     * O padrao do Clayton e feito de teleportes curtos, e teleporte sem
+     * aviso e a coisa mais injusta que um bullet hell pode fazer — o
+     * jogador nao tem como reagir a uma peca que simplesmente aparece em
+     * cima dele. Com o destino aceso durante a pausa inteira, a pergunta
+     * deixa de ser "pra onde ela vai?" e passa a ser "dá tempo de eu sair
+     * de la?", que e uma pergunta jogavel.
+     *
+     * O brilho FECHA conforme a pausa escorre: o tamanho do circulo conta
+     * quanto tempo falta, sem precisar de numero na tela.
+     */
+    private void desenharAnuncioDoLance(Graphics2D g) {
+
+        double dx = alvoX - x;
+        double dy = alvoY - y;
+        double dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Lance nulo (a peca vai ficar onde esta): nao ha o que anunciar.
+        if (dist < 1) {
+            return;
+        }
+
+        double frac = pausa / (double) pausaEntreLances;
+
+        java.awt.Stroke anterior = g.getStroke();
+
+        // --- pontilhado do lugar atual ate o destino ---
+        //
+        // BasicStroke com dash faz isso de graca; a fase do tracejado
+        // anda com o tempo, entao os pontos correm na direcao do destino
+        // e o olho segue o caminho sozinho.
+        float[] tracejado = { 4f, 7f };
+        float fase = (float) ((pausaEntreLances - pausa) * 0.9);
+
+        g.setStroke(new java.awt.BasicStroke(2f, java.awt.BasicStroke.CAP_ROUND,
+                                             java.awt.BasicStroke.JOIN_ROUND,
+                                             10f, tracejado, fase));
+
+        g.setColor(new Color(cor.getRed(), cor.getGreen(), cor.getBlue(), 150));
+        g.drawLine((int) x, (int) y, (int) alvoX, (int) alvoY);
+
+        // --- a casa de destino, acesa ---
+        double raioBrilho = radius * (1.1 + 1.5 * frac);
+
+        for (int i = 3; i >= 1; i--) {
+
+            double r = raioBrilho * i / 3.0;
+
+            g.setColor(new Color(cor.getRed(), cor.getGreen(), cor.getBlue(), 30 + (3 - i) * 22));
+            g.fillOval((int) (alvoX - r), (int) (alvoY - r), (int) (r * 2), (int) (r * 2));
+        }
+
+        g.setStroke(new java.awt.BasicStroke(1.8f));
+        g.setColor(new Color(255, 255, 255, 170));
+        g.drawOval((int) (alvoX - raioBrilho), (int) (alvoY - raioBrilho),
+                   (int) (raioBrilho * 2), (int) (raioBrilho * 2));
+
+        // Fantasma do glifo na casa de destino: diz QUEM vai chegar ali,
+        // util quando ha varias pecas anunciando ao mesmo tempo.
+        g.setFont(new Font("SansSerif", Font.BOLD, (int) (radius * 2.2)));
+
+        String s = String.valueOf(peca.glifo);
+        int larg = g.getFontMetrics().stringWidth(s);
+        int alt = g.getFontMetrics().getAscent();
+
+        g.setColor(new Color(cor.getRed(), cor.getGreen(), cor.getBlue(), 120));
+        g.drawString(s, (int) (alvoX - larg / 2.0), (int) (alvoY + alt / 2.5));
+
+        g.setStroke(anterior);
     }
 
     /* =========================

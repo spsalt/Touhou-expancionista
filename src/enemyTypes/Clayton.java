@@ -29,7 +29,14 @@ import src.enemyTypes.spellCards.XadrezSpell;
 public class Clayton extends BossEnemy {
 
     private Clayton(SpellCard[] spellCards, String sprite, double escala) {
+
         super(spellCards, sprite, escala);
+
+        // Ele fica magro demais no enquadramento padrao: a foto e mais
+        // alta que larga, e como a caixa e quadrada sobra altura e falta
+        // corpo. Estica so a horizontal — a altura e a colisao ficam
+        // como estao.
+        this.escalaLargura = Config.getDouble("clayton.escalaLargura", 1.35);
     }
 
     /**

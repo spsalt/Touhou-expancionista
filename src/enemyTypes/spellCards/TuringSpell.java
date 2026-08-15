@@ -99,19 +99,58 @@ public class TuringSpell extends SpellCard {
     /** > 0 = piscando de verde (acertou). */
     private int flashAcerto = 0;
 
+    /** Em que estado a maquina estava em cada celula. So pra mostrar. */
+    private String[] estados;
+
     /** Guarda a posicao do jogador antes da trava, pra devolver depois. */
     private double xAntes, yAntes;
 
     private boolean travouOJogador = false;
 
+    /**
+     * O TRACO DE EXECUCAO de um programa de verdade.
+     *
+     * A fita do ataque nao e mais sorteada: e a lista de passos de uma
+     * MaquinaDeTuring real rodando o reconhecedor de 0ⁿ1ⁿ. Cada celula que
+     * o jogador digita e um simbolo que a maquina de fato escreveu, na
+     * ordem em que escreveu.
+     *
+     * Calculado UMA VEZ e guardado: o construtor precisa do tamanho dele
+     * antes do super(), e rodar a maquina de novo a cada luta seria
+     * trabalho repetido pra dar sempre o mesmo resultado (a maquina e
+     * deterministica — e essa e a graca).
+     */
+    private static java.util.List<src.MaquinaDeTuring.Passo> tracoCache = null;
+
+    private static java.util.List<src.MaquinaDeTuring.Passo> traco() {
+
+        if (tracoCache == null) {
+
+            int n = Math.max(1, Config.getInt("papa.turing.n", 4));
+
+            tracoCache = src.MaquinaDeTuring.reconhecedor0n1n()
+                    .executar(src.MaquinaDeTuring.entrada0n1n(n), 4000);
+        }
+
+        return tracoCache;
+    }
+
     public TuringSpell() {
 
+        // O HP E O TAMANHO DA COMPUTACAO.
+        //
+        // Durante este ataque o tiro esta desligado, entao digitar e a
+        // UNICA fonte de dano — a barra de vida do chefe e literalmente a
+        // barra de progresso da fita. Derivar o HP do traco em vez de
+        // deixar solto no properties elimina a chance de os dois
+        // desalinharem: com HP a mais o ataque nunca terminaria, com HP a
+        // menos ele acabaria no meio do programa.
         super("⊢  Máquina de Turing",
-              Config.getDouble("papa.turing.hp", 240),
+              traco().size() * Config.getDouble("papa.turing.danoPorAcerto", 10),
               Config.getInt("papa.turing.duracao", 999999));
 
         this.alfabeto      = Config.getString("papa.turing.alfabeto", "01ABDEFGHIJKLMNOPQRSTUWY");
-        this.tamanhoDaFita = Math.max(1, Config.getInt("papa.turing.tamanhoDaFita", 24));
+        this.tamanhoDaFita = traco().size();
 
         this.tempoInicial = Math.max(20, Config.getInt("papa.turing.tempoInicial", 130));
         this.aceleracao   = Config.getDouble("papa.turing.aceleracao", 3.5);
@@ -128,13 +167,21 @@ public class TuringSpell extends SpellCard {
     @Override
     public void iniciar(BossEnemy chefe) {
 
-        long seed = Config.getInt("papa.turing.seed", -1);
-        Random rng = (seed < 0) ? new Random() : new Random(seed);
+        // A FITA E O QUE A MAQUINA ESCREVEU, passo a passo.
+        //
+        // Antes eram letras sorteadas do alfabeto: funcionava como jogo,
+        // mas era mentira — nao havia programa nenhum ali, so ruido com
+        // cara de computacao. Num trabalho de um curso que ENSINA maquina
+        // de Turing, e o tipo de detalhe que o professor nota em dois
+        // segundos.
+        java.util.List<src.MaquinaDeTuring.Passo> passos = traco();
 
         fita = new char[tamanhoDaFita];
+        estados = new String[tamanhoDaFita];
 
         for (int i = 0; i < tamanhoDaFita; i++) {
-            fita[i] = alfabeto.charAt(rng.nextInt(alfabeto.length()));
+            fita[i] = passos.get(i).escrito;
+            estados[i] = passos.get(i).estado;
         }
 
         cabecote = 0;
@@ -161,6 +208,8 @@ public class TuringSpell extends SpellCard {
 
         if (flashErro > 0)   flashErro--;
         if (flashAcerto > 0) flashAcerto--;
+
+        atualizarVoadores();
 
         // A fita desliza ate a posicao do cabecote atual (12% do que falta
         // por tick): o mesmo amortecimento usado nos retratos da cutscene.
@@ -201,6 +250,20 @@ public class TuringSpell extends SpellCard {
         Som.tocar(Som.TURING_OK);
 
         flashAcerto = 10;
+
+        // O SIMBOLO DIGITADO VIRA UM PROJETIL E VOA NO CHEFE.
+        //
+        // O dano ja acontecia — a barra dele descia a cada letra — mas nada
+        // LIGAVA as duas coisas na tela: voce digitava aqui embaixo e um
+        // numero mudia la em cima. Sem esse elo, o ataque parecia um
+        // minigame parado no meio da luta, e nao a luta em si.
+        //
+        // O projetil sai da celula, sobe ate o chefe e estoura nele (ver
+        // SimboloVoador). O dano em si continua sendo aplicado AQUI, na
+        // hora do acerto, e nao quando o projetil chega: atrasar o dano
+        // pelo tempo de voo faria a barra descer fora de compasso com a
+        // digitacao, que e justamente a sincronia que a gente quer.
+        dispararSimbolo(chefe);
 
         chefe.levarDano(danoPorAcerto);
 
@@ -243,6 +306,131 @@ public class TuringSpell extends SpellCard {
         armarRelogio();
     }
 
+    /**
+     * Cria o projetil do simbolo recem-digitado, saindo da celula do
+     * cabecote em direcao ao chefe.
+     */
+    private void dispararSimbolo(BossEnemy chefe) {
+
+        double cx = Main.CAMPO_X + Main.CAMPO_W / 2.0;
+        double cy = alturaDaFita();
+
+        voadores.add(new SimboloVoador(cx, cy, chefe.getX(), chefe.getY(),
+                                       fita[cabecote]));
+    }
+
+    /**
+     * Um simbolo voando da fita ate o chefe, com o estouro no fim.
+     *
+     * Vive dentro do proprio spell card em vez de virar uma bala do jogo:
+     * ele nao colide com nada, nao pode ser apagado por bomba e nao deve
+     * aparecer em nenhum loop de colisao. E puro feedback.
+     */
+    private static class SimboloVoador {
+
+        final double x0, y0, x1, y1;
+        final char simbolo;
+
+        int t = 0;
+        final int voo;
+
+        SimboloVoador(double x0, double y0, double x1, double y1, char simbolo) {
+            this.x0 = x0;
+            this.y0 = y0;
+            this.x1 = x1;
+            this.y1 = y1;
+            this.simbolo = simbolo;
+            this.voo = Math.max(6, Config.getInt("papa.turing.ticksDeVooDoSimbolo", 16));
+        }
+
+        boolean acabou() {
+            return t > voo + Config.getInt("papa.turing.ticksDoEstouro", 14);
+        }
+
+        /** 0 a 1 durante o voo; 1 depois que chegou. */
+        double progresso() {
+            return Math.min(1.0, t / (double) voo);
+        }
+
+        boolean estourando() {
+            return t > voo;
+        }
+    }
+
+    /** Os simbolos em voo agora. */
+    private final java.util.List<SimboloVoador> voadores = new java.util.ArrayList<>();
+
+    /** Anda com os projeteis e descarta os que ja estouraram. */
+    private void atualizarVoadores() {
+
+        for (int i = voadores.size() - 1; i >= 0; i--) {
+
+            voadores.get(i).t++;
+
+            if (voadores.get(i).acabou()) {
+                voadores.remove(i);
+            }
+        }
+    }
+
+    /**
+     * Desenha os simbolos voando e o estouro na chegada.
+     *
+     * O voo tem um ARCO: o projetil sobe desviando pro lado antes de
+     * cair no chefe. Linha reta entre dois pontos que estao quase na
+     * mesma vertical viraria um risco sem leitura; o arco mostra a
+     * trajetoria inteira em duas dezenas de frames.
+     */
+    private void desenharVoadores(java.awt.Graphics2D g) {
+
+        for (int i = 0; i < voadores.size(); i++) {
+
+            SimboloVoador v = voadores.get(i);
+
+            double f = v.progresso();
+
+            double x = v.x0 + (v.x1 - v.x0) * f;
+            double y = v.y0 + (v.y1 - v.y0) * f;
+
+            // Arco: um seno somado na horizontal, maximo no meio do voo.
+            x += Math.sin(f * Math.PI) * 70 * ((i % 2 == 0) ? 1 : -1);
+
+            if (!v.estourando()) {
+
+                // Rastro.
+                g.setColor(new Color(150, 255, 200, 90));
+                g.fillOval((int) x - 9, (int) y - 9, 18, 18);
+
+                g.setFont(new Font("Monospaced", Font.BOLD, 22));
+                g.setColor(new Color(220, 255, 235));
+
+                String texto = String.valueOf(v.simbolo);
+                int larg = g.getFontMetrics().stringWidth(texto);
+
+                g.drawString(texto, (int) (x - larg / 2.0), (int) y + 8);
+
+                continue;
+            }
+
+            // ESTOURO no chefe: aneis abrindo e apagando.
+            double fe = (v.t - v.voo)
+                      / (double) Math.max(1, Config.getInt("papa.turing.ticksDoEstouro", 14));
+
+            for (int k = 3; k >= 1; k--) {
+
+                double r = 10 + 34 * fe * k * 0.45;
+                int a = (int) (200 * (1 - fe) / k);
+
+                if (a <= 0) {
+                    continue;
+                }
+
+                g.setColor(new Color(180, 255, 210, Math.min(255, a)));
+                g.drawOval((int) (v.x1 - r), (int) (v.y1 - r), (int) (r * 2), (int) (r * 2));
+            }
+        }
+    }
+
     /** Relogio da celula atual, encurtando conforme a fita avanca. */
     private void armarRelogio() {
 
@@ -250,6 +438,22 @@ public class TuringSpell extends SpellCard {
 
         relogioCheio = Math.max(tempoMinimo, t);
         relogio = relogioCheio;
+    }
+
+    /**
+     * O estado da maquina na celula atual, pra mostrar no rodape.
+     *
+     * Sem isto a fita continuaria parecendo uma sequencia arbitraria: o
+     * estado mudando (q0 -> q1 -> q2) e o que deixa visivel que existe uma
+     * MAQUINA rodando ali, e nao um gerador de letras.
+     */
+    private String estadoAtual() {
+
+        if (estados == null || cabecote < 0 || cabecote >= estados.length) {
+            return "";
+        }
+
+        return estados[cabecote];
     }
 
     private boolean terminou() {
@@ -275,7 +479,11 @@ public class TuringSpell extends SpellCard {
 
         Main.player.setTravado(true);
         Main.player.setX(Main.CAMPO_X + Main.CAMPO_W / 2.0);
-        Main.player.setY(alturaDaFita());
+
+        // ACIMA da fita, nao em cima dela. Com o jogador centrado na
+        // celula, o retrato dele cobria exatamente o simbolo que ele
+        // precisava ler — o ataque pedia uma informacao e escondia ela.
+        Main.player.setY(alturaDaFita() - alturaDoCabecote());
     }
 
     /**
@@ -308,6 +516,17 @@ public class TuringSpell extends SpellCard {
         return Main.CAMPO_Y + Main.CAMPO_H * Config.getDouble("papa.turing.alturaRelY", 0.62);
     }
 
+    /**
+     * Quanto o cabecote fica ACIMA do centro da celula.
+     *
+     * Tem que ser maior que meia celula mais meio retrato, senao o
+     * jogador volta a encostar no simbolo. O padrao (78) da folga pro
+     * retrato de 62 px sobre celulas de 62.
+     */
+    private double alturaDoCabecote() {
+        return Config.getDouble("papa.turing.alturaDoCabecote", 78);
+    }
+
     /* =========================
             RENDER
        ========================= */
@@ -335,10 +554,16 @@ public class TuringSpell extends SpellCard {
 
         desenharCabecote(g, centroX, eixoY);
 
-        // O relogio vai POR ULTIMO, acima da capsula: ele e a informacao
-        // mais urgente da tela e nao pode ficar atras de nada.
+        // Os simbolos voando pro chefe vao POR CIMA da fita: eles saem
+        // dela, entao passar por baixo pareceria que sumiram.
+        desenharVoadores(g);
+
+        // O relogio fica ao LADO do cabecote, e nao acima da celula: em
+        // cima da celula ele disputaria espaco com o proprio cabecote.
         if (!terminou()) {
-            desenharRelogio(g, centroX, eixoY - (larguraCelula + 30) / 2.0 - 26);
+            desenharRelogio(g,
+                            centroX + larguraCelula * 0.85,
+                            eixoY - alturaDoCabecote());
         }
 
         desenharProgresso(g, eixoY);
@@ -429,7 +654,18 @@ public class TuringSpell extends SpellCard {
      * retangulo cheio), senao o sprite do jogador ficaria escondido
      * dentro dela.
      */
+    /**
+     * A capsula do cabecote, desenhada ACIMA da celula atual, com uma
+     * agulha apontando pra ela.
+     *
+     * A agulha nao e enfeite: com a capsula fora da fita, precisa ficar
+     * obvio QUAL celula esta sob leitura. E tambem e o desenho certo —
+     * numa maquina de Turing de verdade o cabecote paira sobre a fita, e
+     * nao dentro dela.
+     */
     private void desenharCabecote(Graphics2D g, double cx, double eixoY) {
+
+        double cy = eixoY - alturaDoCabecote();
 
         int larg = larguraCelula + 16;
         int alt = larguraCelula + 30;
@@ -441,24 +677,32 @@ public class TuringSpell extends SpellCard {
                                     : new Color(150, 220, 255);
 
         g.setColor(borda);
-        g.drawRoundRect((int) (cx - larg / 2.0), (int) (eixoY - alt / 2.0), larg, alt, 14, 14);
+        g.drawRoundRect((int) (cx - larg / 2.0), (int) (cy - alt / 2.0), larg, alt, 14, 14);
 
         // "Pescoco" ligando a capsula ao topo do campo: deixa claro que
         // quem segura o jogador e a maquina, e nao ele que escolheu parar.
-        g.drawLine((int) cx, (int) (eixoY - alt / 2.0), (int) cx, Main.CAMPO_Y + 60);
+        g.drawLine((int) cx, (int) (cy - alt / 2.0), (int) cx, Main.CAMPO_Y + 60);
+
+        // AGULHA: desce da capsula ate a borda de cima da celula lida.
+        double topoDaCelula = eixoY - (larguraCelula - 6) / 2.0;
+
+        g.setStroke(new BasicStroke(2f));
+        g.drawLine((int) cx, (int) (cy + alt / 2.0), (int) cx, (int) topoDaCelula - 4);
+
+        int[] px = { (int) cx, (int) cx - 6, (int) cx + 6 };
+        int[] py = { (int) topoDaCelula, (int) topoDaCelula - 9, (int) topoDaCelula - 9 };
+
+        g.fillPolygon(px, py, 3);
 
         g.setStroke(anterior);
 
-        // A legenda vai ABAIXO da capsula: em cima e onde mora o relogio,
-        // e relogio e legenda disputando o mesmo espaco deixaria os dois
-        // ilegiveis.
         g.setFont(new Font("Monospaced", Font.BOLD, 11));
         g.setColor(new Color(150, 220, 255));
 
         String rotulo = "CABEÇOTE";
         int largRotulo = g.getFontMetrics().stringWidth(rotulo);
 
-        g.drawString(rotulo, (int) (cx - largRotulo / 2.0), (int) (eixoY + alt / 2.0 + 14));
+        g.drawString(rotulo, (int) (cx - largRotulo / 2.0), (int) (cy - alt / 2.0 - 8));
     }
 
     /** Quantas celulas faltam, no rodape. */
@@ -470,6 +714,7 @@ public class TuringSpell extends SpellCard {
         String texto = terminou()
                      ? "PROGRAMA ACEITO"
                      : "DIGITE O SÍMBOLO   " + cabecote + " / " + tamanhoDaFita
+                       + "        " + estadoAtual() + "   ·   reconhecendo 0\u207F1\u207F"
                        + "     (tiro travado)";
 
         int larg = g.getFontMetrics().stringWidth(texto);

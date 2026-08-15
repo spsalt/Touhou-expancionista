@@ -88,7 +88,7 @@ public class SomatorioSpell extends SpellCard {
             return;
         }
 
-        Som.tocar(Som.TIRO_INIMIGO);
+        Som.tocar(Som.ADRIANA_GLIFO);
 
         // Um sigma de cada lado do campo. Alternam de posicao a cada
         // disparo, pra o corredor seguro nunca ficar no mesmo lugar.

@@ -32,6 +32,33 @@ public class Background {
     /** Foto ja reescalada pra largura do campo. null = usa cor chapada. */
     private BufferedImage imagem;
 
+    /**
+     * A foto ANTERIOR, mantida viva durante a transicao.
+     *
+     * Trocar de cenario com um corte seco denuncia que houve uma "cena":
+     * o jogo pisca e o jogador sente que saiu do mundo. Guardando a foto
+     * velha e desvanecendo ela por cima da nova, a passagem do caminho pra
+     * sala 7 acontece SEM interromper nada — e o que a serie faz entre os
+     * trechos de um estagio.
+     */
+    private BufferedImage imagemAnterior;
+
+    /** Ticks restantes da transicao. 0 = so a foto atual. */
+    private int transicao = 0;
+
+    /** Duracao total da transicao em andamento, pro calculo do alfa. */
+    private int transicaoTotal = 1;
+
+    /**
+     * Deslocamento proprio da foto antiga.
+     *
+     * Ela continua ROLANDO durante o fade, com o mesmo offset da nova.
+     * Congelar a antiga faria a imagem que some parecer uma foto colada
+     * na tela, e o corte que a gente estava tentando evitar voltaria
+     * disfarcado de transicao.
+     */
+    private double offsetAnterior = 0;
+
     /** Vinheta pre-desenhada. null = desligada. */
     private BufferedImage vinheta;
 
@@ -90,9 +117,36 @@ public class Background {
      * chefe, pra o fundo virar a sala 7). Passar null volta pro padrao.
      */
     public void trocarImagem(String caminho) {
+
+        // Pedir o cenario que ja esta no ar nao faz nada. As fases chamam
+        // isso dentro do tick(), ou seja, sessenta vezes por segundo —
+        // sem esta guarda a transicao reiniciaria a cada frame e o fundo
+        // ficaria congelado no meio do fade pra sempre.
+        if (caminho == null ? caminhoForcado == null : caminho.equals(caminhoForcado)) {
+            return;
+        }
+
+        this.imagemAnterior = this.imagem;
+        this.offsetAnterior = this.offset;
+
         this.caminhoForcado = caminho;
         carregarImagem();
-        offset = 0;
+
+        // So faz sentido desvanecer se havia alguma coisa antes.
+        if (imagemAnterior != null) {
+            transicaoTotal = Math.max(1, Config.getInt("fundo.ticksDeTransicao", 90));
+            transicao = transicaoTotal;
+        } else {
+            transicao = 0;
+        }
+
+        // A rolagem NAO zera: zerar daria um salto vertical no exato
+        // momento da troca, que e o corte que estamos evitando.
+    }
+
+    /** true enquanto o cenario ainda esta desvanecendo pro novo. */
+    public boolean emTransicao() {
+        return transicao > 0;
     }
 
     /** Cenario pedido em runtime. null = usa o do game.properties. */
@@ -255,6 +309,24 @@ public class Background {
             offset -= imagem.getHeight();
         }
 
+        // A foto que esta saindo continua rolando junto, no mesmo ritmo.
+        if (transicao > 0) {
+
+            offsetAnterior += velocidadeScroll;
+
+            if (imagemAnterior != null && offsetAnterior >= imagemAnterior.getHeight()) {
+                offsetAnterior -= imagemAnterior.getHeight();
+            }
+
+            transicao--;
+
+            // Acabou: solta a referencia pra o garbage collector poder
+            // recolher a foto antiga (elas sao grandes).
+            if (transicao == 0) {
+                imagemAnterior = null;
+            }
+        }
+
         for (int i = 0; i < particulas.length; i++) {
             particulas[i].tick(rng);
         }
@@ -304,18 +376,50 @@ public class Background {
      */
     private void desenharFoto(Graphics2D g) {
 
-        if (imagem == null) {
+        if (imagem == null && imagemAnterior == null) {
             g.setColor(new Color(18, 18, 34));
             g.fillRect(Main.CAMPO_X, Main.CAMPO_Y, Main.CAMPO_W, Main.CAMPO_H);
             return;
         }
 
-        int altura = imagem.getHeight();
-        int inicio = Main.CAMPO_Y + (int) offset - altura;
+        // A NOVA vai por baixo, opaca. A ANTIGA vai por cima, sumindo.
+        //
+        // Nesta ordem o fade nunca deixa buraco: em qualquer instante ha
+        // uma imagem opaca cobrindo o campo. Fazendo o contrario (a nova
+        // aparecendo por cima da antiga) o meio da transicao mostraria as
+        // duas meio transparentes, e o campo escureceria no caminho.
+        desenharCamada(g, imagem, offset, 1f);
+
+        if (transicao > 0 && imagemAnterior != null) {
+
+            float alpha = transicao / (float) transicaoTotal;
+
+            desenharCamada(g, imagemAnterior, offsetAnterior, alpha);
+        }
+    }
+
+    /** Desenha uma foto repetida verticalmente, com a opacidade pedida. */
+    private void desenharCamada(Graphics2D g, BufferedImage img, double desloc, float alpha) {
+
+        if (img == null || alpha <= 0) {
+            return;
+        }
+
+        java.awt.Composite anterior = g.getComposite();
+
+        if (alpha < 1f) {
+            g.setComposite(java.awt.AlphaComposite.getInstance(
+                    java.awt.AlphaComposite.SRC_OVER, alpha));
+        }
+
+        int altura = img.getHeight();
+        int inicio = Main.CAMPO_Y + (int) desloc - altura;
 
         for (int y = inicio; y < Main.CAMPO_Y + Main.CAMPO_H; y += altura) {
-            g.drawImage(imagem, Main.CAMPO_X, y, null);
+            g.drawImage(img, Main.CAMPO_X, y, null);
         }
+
+        g.setComposite(anterior);
     }
 
     /** Prende um valor na faixa 0..255 (que e o que Color aceita). */

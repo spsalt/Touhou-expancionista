@@ -50,6 +50,61 @@ public final class Assets {
         return img;
     }
 
+    /** Cache das versoes JA REDIMENSIONADAS: "caminho@LxA" -> imagem. */
+    private static final Map<String, BufferedImage> cacheEscalado = new HashMap<>();
+
+    /**
+     * A imagem ja no tamanho pedido, redimensionada UMA VEZ e reaproveitada.
+     *
+     * POR QUE ISSO EXISTE: o corredor dos Seguidores do IEEE chega a 270
+     * balas na tela, cada uma com sprite. Chamando drawImage com largura e
+     * altura, o Java2D reescala o PNG A CADA CHAMADA — sao 270
+     * redimensionamentos por frame, 60 vezes por segundo, sempre pro mesmo
+     * tamanho. Guardando o resultado, o desenho vira uma copia direta.
+     *
+     * O cache e por TAMANHO INTEIRO, entao balas de raios diferentes nao
+     * brigam entre si, e o numero de entradas e pequeno por natureza (um
+     * tipo de bala usa um ou dois tamanhos a vida toda).
+     *
+     * Devolve null nas mesmas condicoes do get(): sem arquivo, sem imagem.
+     */
+    public static BufferedImage getEscalado(String caminho, int largura, int altura) {
+
+        if (largura <= 0 || altura <= 0) {
+            return null;
+        }
+
+        String chave = caminho + "@" + largura + "x" + altura;
+
+        if (cacheEscalado.containsKey(chave)) {
+            return cacheEscalado.get(chave);
+        }
+
+        BufferedImage original = get(caminho);
+
+        if (original == null) {
+            cacheEscalado.put(chave, null);
+            return null;
+        }
+
+        BufferedImage saida = new BufferedImage(largura, altura, BufferedImage.TYPE_INT_ARGB);
+
+        java.awt.Graphics2D g = saida.createGraphics();
+
+        // Vizinho mais proximo: os sprites das balas sao pixel art, e
+        // interpolacao suave borraria justamente as bordas duras que fazem
+        // elas serem legiveis no meio de uma tela cheia.
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                           java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+
+        g.drawImage(original, 0, 0, largura, altura, null);
+        g.dispose();
+
+        cacheEscalado.put(chave, saida);
+
+        return saida;
+    }
+
     private static BufferedImage carregar(String caminho) {
 
         File arquivo = resolverArquivo(caminho);

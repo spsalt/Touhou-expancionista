@@ -32,7 +32,52 @@ public class Bullet {
     /** Opacidade do sprite, 0 a 1. Usada pra marcar bala fraca. */
     protected float opacidadeSprite = 1f;
 
+    /**
+     * Esta bala ja foi "rocada" (graze) pelo jogador?
+     *
+     * Cada bala so vale graze UMA vez. Sem essa marca, ficar parado ao
+     * lado de uma bala lenta renderia pontos a 60 por segundo, e o
+     * incentivo viraria "encoste e espere" em vez de "passe raspando".
+     */
+    protected boolean rocada = false;
+
+    /**
+     * Onde esta bala estava no frame anterior.
+     *
+     * Existe pro buff "Programacao Orientada a Objetos" (ver Player):
+     * pra saber se uma bala vem na sua direcao e preciso saber PRA ONDE
+     * ela vai, e cada tipo de bala guarda isso de um jeito diferente — a
+     * IntegralBullet tem dx/dy, o PonteiroBullet recalcula a direcao todo
+     * tick perseguindo alguem, o XadrezBullet salta, a Bullet3D anda em
+     * perspectiva.
+     *
+     * Em vez de pedir a cada subclasse que exponha a propria velocidade
+     * (e confiar que todas as oito respondam certo), a classe base MEDE:
+     * a velocidade real e simplesmente onde ela esta menos onde estava.
+     * Funciona pra qualquer bala que exista hoje e pra qualquer uma que a
+     * gente escreva depois, sem ela precisar saber que o buff existe.
+     */
+    protected double xAnterior, yAnterior;
+
     public Bullet() {
+    }
+
+    /**
+     * Guarda a posicao atual antes do tick. Chamado pelo Main uma vez por
+     * frame, pra todas as balas.
+     */
+    public void guardarPosicao() {
+        this.xAnterior = x;
+        this.yAnterior = y;
+    }
+
+    /** Quanto ela andou no ultimo frame, em pixels por tick. */
+    public double getVelX() {
+        return x - xAnterior;
+    }
+
+    public double getVelY() {
+        return y - yAnterior;
     }
 
     /** Logica por frame: mover, checar limites, checar colisao. */
@@ -68,6 +113,16 @@ public class Bullet {
 
         int alt = (int) (radius * 2 * escalaAoRaio);
         int larg = Math.max(1, img.getWidth() * alt / img.getHeight());
+
+        // Pega a versao JA no tamanho certo. Sem isso, o Java2D reescala o
+        // PNG a cada chamada — e o corredor dos Seguidores do IEEE chega a
+        // 270 balas com sprite na tela, ou seja, 270 redimensionamentos
+        // por frame sempre pro mesmo tamanho.
+        java.awt.image.BufferedImage pronta = src.Assets.getEscalado(sprite, larg, alt);
+
+        if (pronta != null) {
+            img = pronta;
+        }
 
         java.awt.geom.AffineTransform anterior = g.getTransform();
         java.awt.Composite composto = g.getComposite();
@@ -140,6 +195,14 @@ public class Bullet {
 
     public void setOpacidadeSprite(float opacidadeSprite) {
         this.opacidadeSprite = Math.max(0f, Math.min(1f, opacidadeSprite));
+    }
+
+    public boolean isRocada() {
+        return rocada;
+    }
+
+    public void setRocada(boolean rocada) {
+        this.rocada = rocada;
     }
 
     public boolean isHitPlayer() {

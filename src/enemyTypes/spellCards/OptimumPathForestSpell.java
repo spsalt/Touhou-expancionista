@@ -63,6 +63,28 @@ import src.enemyTypes.BossEnemy;
  * saem primeiro e as longas por ultimo: o jogador ve a floresta crescer
  * de dentro pra fora e consegue prever o que vem.
  *
+ * O AQUECIMENTO — a curva que da forma a luta inteira
+ * ---------------------------------------------------
+ * O classificador nao comeca pronto: ele TREINA. No comeco do spell card
+ * a floresta cresce devagar (aviso longo, pausa longa entre conquistas) e
+ * quem realmente aperta o jogador sao os alunos corrompidos entrando em
+ * ARCO pelas laterais, num fluxo constante e de baixa cadencia.
+ *
+ * Conforme o tempo passa, os dois lados trocam de lugar:
+ *
+ *     OPF        devagar  ------------------->  rapido
+ *     laterais   constante ------------------>  raro
+ *
+ * A ideia e que a luta mude de assunto sem mudar de tela. No comeco o
+ * problema e o CAMPO (gente entrando pelos lados o tempo todo, e uma
+ * maquina lenta no fundo); no fim o problema e a MAQUINA (a floresta
+ * fechando rapido, e o campo praticamente vazio em volta). Um jogador que
+ * so aprendeu a lidar com um dos dois nao passa.
+ *
+ * O HP e o dobro do de um spell card normal justamente porque a primeira
+ * metade e propositalmente mais lenta: sem isso, o ataque acabaria antes
+ * de chegar na parte que ele quer mostrar.
+ *
  * A conta e barata: umas duas dezenas de nos, Prim O(n²) rodado UMA vez
  * por ciclo em iniciarCiclo(). Nada de algoritmo por frame.
  */
@@ -96,11 +118,38 @@ public class OptimumPathForestSpell extends SpellCard {
     private final int prototipos;
     private final int amostras;
 
+    /* --- o aquecimento: cada par vai do LENTO (inicio) ao RAPIDO (fim) --- */
+
+    /** Ticks ate o classificador estar no ritmo maximo. */
+    private final int ticksDeAquecimento;
+
     /** Ticks que a aresta candidata fica piscando antes de disparar. */
-    private final int ticksDeAviso;
+    private final int ticksDeAvisoInicial;
+    private final int ticksDeAvisoFinal;
 
     /** Ticks de pausa entre uma conquista e o aviso da proxima. */
-    private final int ticksEntreConquistas;
+    private final int ticksEntreConquistasInicial;
+    private final int ticksEntreConquistasFinal;
+
+    /* --- os alunos entrando em arco pelas laterais --- */
+
+    /** Ticks entre um aluno e o proximo, no COMECO (fluxo constante). */
+    private final int intervaloDosArcosInicial;
+
+    /** E no FIM, quando eles ja quase nao vem mais. */
+    private final int intervaloDosArcosFinal;
+
+    /** Ticks ate o proximo aluno entrar. */
+    private int ateOProximoArco = 0;
+
+    /** Alterna o lado de entrada, pra nao virem todos do mesmo. */
+    private boolean arcoPelaEsquerda = true;
+
+    /** Quantos alunos entram de uma vez. */
+    private final int arcosPorLevada;
+
+    /** Espalhamento vertical das entradas, em fracao do campo. */
+    private final double dispersaoDosArcos;
 
     private final int ticksDeAlivio;
 
@@ -145,6 +194,17 @@ public class OptimumPathForestSpell extends SpellCard {
     /** Ticks de pausa restantes entre um ciclo e o proximo. */
     private int alivio = 0;
 
+    /** Cronometro proprio, so pra animar a varredura do desenho. */
+    private int tDesenho = 0;
+
+    /**
+     * 0 = classificador frio (lento, com o campo cheio de alunos).
+     * 1 = classificador treinado (rapido, com o campo vazio).
+     *
+     * Guardado num campo porque tanto a logica quanto o desenho leem ele.
+     */
+    private double aquecimento = 0;
+
     private Random rng;
 
     /** O no do jogador e sempre o indice 0 — ver iniciarCiclo(). */
@@ -159,9 +219,21 @@ public class OptimumPathForestSpell extends SpellCard {
         this.prototipos = Math.max(2, Config.getInt("papa.opf.prototipos", 3));
         this.amostras   = Math.max(4, Config.getInt("papa.opf.amostras", 9));
 
-        this.ticksDeAviso         = Math.max(1, Config.getInt("papa.opf.ticksDeAviso", 30));
-        this.ticksEntreConquistas = Math.max(0, Config.getInt("papa.opf.ticksEntreConquistas", 16));
-        this.ticksDeAlivio        = Math.max(0, Config.getInt("papa.opf.ticksDeAlivio", 120));
+        this.ticksDeAquecimento = Math.max(1, Config.getInt("papa.opf.ticksDeAquecimento", 1500));
+
+        this.ticksDeAvisoInicial = Math.max(1, Config.getInt("papa.opf.ticksDeAvisoInicial", 62));
+        this.ticksDeAvisoFinal   = Math.max(1, Config.getInt("papa.opf.ticksDeAvisoFinal", 22));
+
+        this.ticksEntreConquistasInicial = Math.max(0, Config.getInt("papa.opf.ticksEntreConquistasInicial", 40));
+        this.ticksEntreConquistasFinal   = Math.max(0, Config.getInt("papa.opf.ticksEntreConquistasFinal", 10));
+
+        this.arcosPorLevada    = Math.max(1, Config.getInt("papa.opf.arcosPorLevada", 2));
+        this.dispersaoDosArcos = Config.getDouble("papa.opf.dispersaoDosArcos", 0.16);
+
+        this.intervaloDosArcosInicial = Math.max(10, Config.getInt("papa.opf.intervaloDosArcosInicial", 46));
+        this.intervaloDosArcosFinal   = Math.max(10, Config.getInt("papa.opf.intervaloDosArcosFinal", 520));
+
+        this.ticksDeAlivio = Math.max(0, Config.getInt("papa.opf.ticksDeAlivio", 120));
 
         this.balasPorAresta     = Math.max(1, Config.getInt("papa.opf.balasPorAresta", 7));
         this.velocidadeBala     = Config.getDouble("papa.opf.velocidadeBala", 2.6);
@@ -194,6 +266,11 @@ public class OptimumPathForestSpell extends SpellCard {
     @Override
     public void atacar(int t, BossEnemy chefe) {
 
+        tDesenho = t;
+        aquecimento = Math.min(1.0, t / (double) ticksDeAquecimento);
+
+        soltarArcos(t);
+
         if (alivio > 0) {
             alivio--;
 
@@ -211,7 +288,7 @@ public class OptimumPathForestSpell extends SpellCard {
 
             if (avisando == 0) {
                 executarConquista();
-                esperaAteProxima = ticksEntreConquistas;
+                esperaAteProxima = rampa(ticksEntreConquistasInicial, ticksEntreConquistasFinal);
             }
 
             return;
@@ -235,6 +312,63 @@ public class OptimumPathForestSpell extends SpellCard {
     }
 
     /**
+     * Interpola entre o valor do comeco e o do fim conforme o aquecimento.
+     *
+     * Uma reta e suficiente: a curva do ataque ja e perceptivel porque os
+     * DOIS lados se movem em sentidos opostos ao mesmo tempo. Suavizacao
+     * extra aqui so tornaria o meio da luta indistinguivel das pontas.
+     */
+    private int rampa(int inicio, int fim) {
+        return (int) Math.round(inicio + (fim - inicio) * aquecimento);
+    }
+
+    /**
+     * Os alunos corrompidos entrando em ARCO pelas laterais.
+     *
+     * Fluxo constante e de baixa cadencia no comeco, rareando ate quase
+     * nada no fim. Sao os mesmos ArcEnemy do estagio 1 — reaproveitar o
+     * inimigo comum aqui e proposital: a ultima luta do jogo fecha o
+     * circulo mostrando de novo o que o jogador enfrentou no primeiro
+     * estagio, agora como pano de fundo de outra coisa.
+     */
+    private void soltarArcos(int t) {
+
+        if (ateOProximoArco > 0) {
+            ateOProximoArco--;
+            return;
+        }
+
+        ateOProximoArco = rampa(intervaloDosArcosInicial, intervaloDosArcosFinal);
+
+        // Perto do fim eles simplesmente param: um aluno solitario a cada
+        // nove segundos nao acrescenta nada e ainda rouba atencao da
+        // floresta, que a essa altura ja e o assunto da luta.
+        if (aquecimento >= Config.getDouble("papa.opf.aquecimentoQueCortaArcos", 0.92)) {
+            return;
+        }
+
+        double base = Config.getDouble("papa.opf.alturaDosArcos", 0.55);
+
+        for (int i = 0; i < arcosPorLevada; i++) {
+
+            // Alturas ESPALHADAS dentro da levada, e nao todas iguais.
+            //
+            // Com a mesma altura, dois alunos entrando pelos dois lados
+            // desenhavam o mesmo arco espelhado e o jogador tratava a
+            // levada como um objeto so. Espalhando, cada um cobre uma
+            // faixa diferente e a levada vira duas ameacas.
+            double f = (arcosPorLevada == 1) ? 0.5 : i / (double) (arcosPorLevada - 1);
+            double relY = base + (f - 0.5) * dispersaoDosArcos;
+
+            relY = Math.max(0.08, Math.min(0.85, relY));
+
+            Main.enemies.add(new src.enemyTypes.ArcEnemy(arcoPelaEsquerda, relY));
+
+            arcoPelaEsquerda = !arcoPelaEsquerda;
+        }
+    }
+
+    /**
      * Escolhe o proximo no da fila e comeca a piscar a aresta dele.
      *
      * Prototipo nao tem aresta de entrada — ele so acende, sem aviso e
@@ -246,15 +380,35 @@ public class OptimumPathForestSpell extends SpellCard {
 
         if (nos[alvoAtual].pred < 0) {
             executarConquista();
-            esperaAteProxima = ticksEntreConquistas;
+            esperaAteProxima = rampa(ticksEntreConquistasInicial, ticksEntreConquistasFinal);
             return;
         }
 
-        avisando = ticksDeAviso;
+        avisando = rampa(ticksDeAvisoInicial, ticksDeAvisoFinal);
+
+        Som.tocar(Som.OPF_SCAN);
 
         ultimaJogada = "raiz " + nos[alvoAtual].raiz
                      + " mira amostra " + alvoAtual
                      + "  ·  custo fmax " + (int) nos[alvoAtual].custo;
+    }
+
+    /**
+     * Fim do ataque: leva os alunos junto.
+     *
+     * Sem isto, quem tivesse entrado em arco nos ultimos segundos
+     * continuaria voando (e atirando) durante a cutscene de derrota do
+     * PAPA — dano vindo de um ataque que ja acabou.
+     */
+    @Override
+    public void encerrar(BossEnemy chefe) {
+
+        for (int i = 0; i < Main.enemies.size(); i++) {
+
+            if (Main.enemies.get(i) instanceof src.enemyTypes.ArcEnemy) {
+                Main.enemies.get(i).setAlive(false);
+            }
+        }
     }
 
     /**
@@ -402,6 +556,8 @@ public class OptimumPathForestSpell extends SpellCard {
         // por ciclo.
         if (alvo == NO_DO_JOGADOR) {
 
+            Som.tocar(Som.OPF_VEREDITO);
+
             dispararLequeMirado(nos[nos[alvo].pred], cor.brighter(),
                                 balasDoVeredito, aberturaDoVeredito, velocidadeDoNo * 1.15);
 
@@ -513,6 +669,11 @@ public class OptimumPathForestSpell extends SpellCard {
             return;
         }
 
+        // O codigo vai por BAIXO de tudo: e fundo, nao informacao.
+        desenharCodigoDeFundo(g, tDesenho);
+
+        desenharVarredura(g, tDesenho);
+
         desenharArestas(g);
         desenharArestaAnunciada(g);
         desenharNos(g);
@@ -549,7 +710,10 @@ public class OptimumPathForestSpell extends SpellCard {
         g.drawLine((int) de.x, (int) de.y, (int) alvo.x, (int) alvo.y);
 
         // Mira fechando em cima do alvo.
-        double frac = avisando / (double) ticksDeAviso;
+        // Usa o valor VIGENTE do aviso (ele encolhe conforme o
+        // aquecimento), senao a mira fecharia rapido demais no fim e
+        // devagar demais no comeco.
+        double frac = avisando / (double) Math.max(1, rampa(ticksDeAvisoInicial, ticksDeAvisoFinal));
         int r = (int) (10 + 26 * frac);
 
         g.drawOval((int) (alvo.x - r), (int) (alvo.y - r), r * 2, r * 2);
@@ -577,32 +741,52 @@ public class OptimumPathForestSpell extends SpellCard {
         g.setStroke(anterior);
     }
 
+    /**
+     * Os nos, desenhados como TERMINAIS e nao como bolinhas.
+     *
+     * Quadrado com cantos marcados, mais o indice em hexadecimal do lado.
+     * A escolha e proposital: o resto do jogo fala em circulos (bala,
+     * hitbox, item), entao dar forma retangular e tipografia de monitor
+     * ao grafo separa "coisa que a IA esta calculando" de "coisa que
+     * machuca". E o unico ataque do jogo rodado por uma maquina — tem que
+     * parecer uma.
+     */
     private void desenharNos(Graphics2D g) {
+
+        g.setFont(new Font("Monospaced", Font.PLAIN, 10));
 
         for (int i = 0; i < nos.length; i++) {
 
             No n = nos[i];
 
-            int r = n.prototipo ? 9 : 5;
+            int r = n.prototipo ? 9 : 6;
 
             if (!n.conquistado) {
-                // Ainda nao classificada: cinza fraco.
-                g.setColor(new Color(160, 160, 180, 90));
-                g.drawOval((int) (n.x - r), (int) (n.y - r), r * 2, r * 2);
+
+                // Ainda nao classificada: so os CANTOS do quadrado, como
+                // uma mira de camera esperando foco.
+                g.setColor(new Color(150, 160, 180, 110));
+                desenharCantos(g, n.x, n.y, r + 2);
                 continue;
             }
 
             Color c = corDaRaiz(n.raiz);
 
-            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 200));
-            g.fillOval((int) (n.x - r), (int) (n.y - r), r * 2, r * 2);
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 210));
+            g.fillRect((int) (n.x - r), (int) (n.y - r), r * 2, r * 2);
 
-            // O prototipo ganha um anel: e a semente, nao uma amostra
-            // qualquer, e o jogador precisa distinguir os dois.
+            g.setColor(new Color(20, 22, 30, 190));
+            g.drawRect((int) (n.x - r), (int) (n.y - r), r * 2, r * 2);
+
+            // O prototipo ganha os colchetes de "raiz".
             if (n.prototipo) {
                 g.setColor(Color.WHITE);
-                g.drawOval((int) (n.x - r - 3), (int) (n.y - r - 3), (r + 3) * 2, (r + 3) * 2);
+                desenharCantos(g, n.x, n.y, r + 5);
             }
+
+            // Endereco do no, como saida de terminal.
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 150));
+            g.drawString(String.format("%02X", i), (int) (n.x + r + 3), (int) (n.y - r));
         }
 
         // O no do jogador, marcado com um X ate ser classificado.
@@ -613,15 +797,245 @@ public class OptimumPathForestSpell extends SpellCard {
         g.drawLine((int) meu.x - 7, (int) meu.y + 7, (int) meu.x + 7, (int) meu.y - 7);
     }
 
+
+    /**
+     * O CODIGO DO PROPRIO OPF, rolando no fundo.
+     *
+     * Nao e texto decorativo nem lorem ipsum: e o algoritmo de treino do
+     * classificador, no estilo da LibOPF (Papa & Falcao) — selecao de
+     * prototipos pela MST, a IFT com custo fmax e a classificacao de uma
+     * amostra nova. E literalmente o que este spell card executa em
+     * rodarOPF(); quem parar pra ler o fundo esta lendo a implementacao
+     * do ataque que esta desviando.
+     *
+     * Fica bem transparente de proposito. Bullet hell nao perdoa fundo
+     * que compete com bala — a regra aqui e a mesma do Background: se o
+     * jogador precisar de meio segundo a mais pra achar um projetil, o
+     * enfeite passou do ponto.
+     */
+    private static final String[] CODIGO = {
+        "/* ---------------------------------------------------- */",
+        "/*  Optimum-Path Forest  -  treinamento supervisionado  */",
+        "/*  Papa & Falcao.  Custo de caminho: f_max             */",
+        "/* ---------------------------------------------------- */",
+        "",
+        "/* o caminho vale pelo seu PIOR pulo, e nao pela soma */",
+        "float fmax(Graph *g, int s, int t) {",
+        "    return MAX(g->pathval[s], dist(g->node[s], g->node[t]));",
+        "}",
+        "",
+        "/* 1) prototipos = nos vizinhos na MST que caem   */",
+        "/*    em classes diferentes: a fronteira real     */",
+        "void selecionarPrototipos(Graph *g) {",
+        "    mst = primMinimumSpanningTree(g);",
+        "    for (int s = 0; s < g->nnodes; s++) {",
+        "        int t = mst->pred[s];",
+        "        if (t != NIL && g->node[s].label != g->node[t].label) {",
+        "            g->node[s].status = PROTOTYPE;",
+        "            g->node[t].status = PROTOTYPE;",
+        "        }",
+        "    }",
+        "}",
+        "",
+        "/* 2) IFT: os prototipos competem pelas amostras */",
+        "void treinar(Graph *g) {",
+        "",
+        "    RealHeap *Q = createRealHeap(g->nnodes, g->pathval);",
+        "",
+        "    for (int s = 0; s < g->nnodes; s++) {",
+        "        g->pathval[s] = INFINITY;      /* ninguem alcanca */",
+        "        if (g->node[s].status == PROTOTYPE) {",
+        "            g->pathval[s]   = 0.0;     /* semente: custo 0 */",
+        "            g->node[s].pred = NIL;",
+        "            g->node[s].root = s;",
+        "            insertRealHeap(Q, s);",
+        "        }",
+        "    }",
+        "",
+        "    while (!isEmptyRealHeap(Q)) {",
+        "",
+        "        removeRealHeap(Q, &s);         /* menor custo vence */",
+        "        g->ordered[i++] = s;           /* ordem da conquista */",
+        "",
+        "        for (int t = 0; t < g->nnodes; t++) {",
+        "            if (g->pathval[t] > g->pathval[s]) {",
+        "",
+        "                tmp = fmax(g, s, t);",
+        "",
+        "                if (tmp < g->pathval[t]) {",
+        "                    g->node[t].pred  = s;",
+        "                    g->node[t].root  = g->node[s].root;",
+        "                    g->node[t].label = g->node[s].label;",
+        "                    updateRealHeap(Q, t, tmp);",
+        "                }",
+        "            }",
+        "        }",
+        "    }",
+        "}",
+        "",
+        "/* 3) classificar: a amostra entra na arvore que  */",
+        "/*    oferecer o caminho mais barato ate ela      */",
+        "int classificar(Graph *g, Sample x) {",
+        "",
+        "    int   melhor = NIL;",
+        "    float minimo = INFINITY;",
+        "",
+        "    for (int i = 0; i < g->nnodes; i++) {",
+        "",
+        "        int   s = g->ordered[i];       /* na ordem do IFT */",
+        "        float custo = MAX(g->pathval[s], dist(g->node[s], x));",
+        "",
+        "        if (custo < minimo) { minimo = custo; melhor = s; }",
+        "",
+        "        /* dai pra frente ninguem melhora: pode parar */",
+        "        if (g->pathval[s] > minimo) break;",
+        "    }",
+        "",
+        "    return g->node[melhor].label;      /* o veredito */",
+        "}",
+        "",
+    };
+
+    /**
+     * Desenha o codigo rolando de baixo pra cima, em loop.
+     *
+     * A rolagem e continua (em pixels, nao em linhas) pra nao dar o efeito
+     * de salto que uma lista rolando de linha em linha teria. Desenha so a
+     * faixa visivel, entao o custo nao depende do tamanho do texto.
+     */
+    private void desenharCodigoDeFundo(Graphics2D g, int t) {
+
+        int alturaLinha = Math.max(8, Config.getInt("papa.opf.alturaDaLinhaDoCodigo", 14));
+        double velocidade = Config.getDouble("papa.opf.velocidadeDoCodigo", 0.35);
+
+        int alturaTotal = CODIGO.length * alturaLinha;
+
+        // Rolagem em PIXELS e nao em linhas: rolando de linha em linha o
+        // texto daria saltos, e o fundo chamaria atencao justamente por
+        // causa do movimento brusco.
+        double rolagem = (t * velocidade) % alturaTotal;
+
+        g.setFont(new Font("Monospaced", Font.PLAIN, 11));
+
+        int alphaCodigo    = Config.getInt("papa.opf.alphaDoCodigo", 48);
+        int alphaComentario = Config.getInt("papa.opf.alphaDoComentario", 36);
+
+        Color corCodigo     = new Color(150, 235, 195, alphaCodigo);
+        Color corComentario = new Color(120, 170, 235, alphaComentario);
+
+        int x0 = Main.CAMPO_X + 12;
+
+        // Duas passadas do texto (a que sobe e a que entra por baixo)
+        // cobrem a tela inteira sem precisar de caso especial na virada.
+        for (int passada = 0; passada < 2; passada++) {
+
+            int base = Main.CAMPO_Y + Main.CAMPO_H - (int) rolagem + passada * alturaTotal;
+
+            for (int i = 0; i < CODIGO.length; i++) {
+
+                int y = base + i * alturaLinha - alturaTotal;
+
+                // So o que esta na tela. Sem isto, seriam ~90 drawString
+                // por passada, quase todos fora do campo.
+                if (y < Main.CAMPO_Y - alturaLinha || y > Main.CAMPO_Y + Main.CAMPO_H) {
+                    continue;
+                }
+
+                String linha = CODIGO[i];
+
+                if (linha.isEmpty()) {
+                    continue;
+                }
+
+                boolean comentario = linha.trim().startsWith("/*")
+                                  || linha.trim().startsWith("*")
+                                  || linha.contains("/*");
+
+                g.setColor(comentario ? corComentario : corCodigo);
+                g.drawString(linha, x0, y);
+            }
+        }
+    }
+
+    /**
+     * Quatro cantinhos em L formando um quadrado aberto.
+     *
+     * E o vocabulario visual de "alvo sob analise" que todo HUD de
+     * maquina usa, e custa oito drawLine.
+     */
+    private void desenharCantos(Graphics2D g, double cx, double cy, int r) {
+
+        int p = Math.max(2, r / 2);
+
+        int x0 = (int) (cx - r);
+        int x1 = (int) (cx + r);
+        int y0 = (int) (cy - r);
+        int y1 = (int) (cy + r);
+
+        g.drawLine(x0, y0, x0 + p, y0);   g.drawLine(x0, y0, x0, y0 + p);
+        g.drawLine(x1, y0, x1 - p, y0);   g.drawLine(x1, y0, x1, y0 + p);
+        g.drawLine(x0, y1, x0 + p, y1);   g.drawLine(x0, y1, x0, y1 - p);
+        g.drawLine(x1, y1, x1 - p, y1);   g.drawLine(x1, y1, x1, y1 - p);
+    }
+
+    /**
+     * Linha de varredura descendo o campo, e um leve grid por baixo.
+     *
+     * Puro clima: nao afeta jogabilidade nenhuma. Mas e o que faz o
+     * ataque LER como uma maquina processando, e nao como luzinhas
+     * bonitas — que era a reclamacao original sobre este spell card.
+     */
+    private void desenharVarredura(Graphics2D g, int t) {
+
+        // Grid fraco.
+        g.setColor(new Color(120, 200, 255, 16));
+
+        for (int gx = Main.CAMPO_X; gx < Main.CAMPO_X + Main.CAMPO_W; gx += 40) {
+            g.drawLine(gx, Main.CAMPO_Y, gx, Main.CAMPO_Y + Main.CAMPO_H);
+        }
+
+        for (int gy = Main.CAMPO_Y; gy < Main.CAMPO_Y + Main.CAMPO_H; gy += 40) {
+            g.drawLine(Main.CAMPO_X, gy, Main.CAMPO_X + Main.CAMPO_W, gy);
+        }
+
+        // A linha que varre, com rastro.
+        int periodo = Math.max(1, Config.getInt("papa.opf.periodoDaVarredura", 210));
+        int y = Main.CAMPO_Y + (t % periodo) * Main.CAMPO_H / periodo;
+
+        for (int i = 0; i < 10; i++) {
+            g.setColor(new Color(140, 220, 255, 40 - i * 4));
+            g.drawLine(Main.CAMPO_X, y - i * 3, Main.CAMPO_X + Main.CAMPO_W, y - i * 3);
+        }
+
+        g.setColor(new Color(190, 240, 255, 90));
+        g.drawLine(Main.CAMPO_X, y, Main.CAMPO_X + Main.CAMPO_W, y);
+    }
+
     /** Quantas amostras ja foram classificadas, no canto do campo. */
     private void desenharLegenda(Graphics2D g) {
 
         g.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        g.setColor(new Color(210, 205, 235, 190));
+        g.setColor(new Color(150, 230, 190, 200));
 
+        // Prompt de terminal: e a IA falando, e nao uma legenda do jogo.
         String texto = (alivio > 0)
-                     ? "FLORESTA COMPLETA — reamostrando"
-                     : "classificando  " + animadas + " / " + ordem.length;
+                     ? "opf> forest complete — resampling"
+                     : "opf> ift running  " + animadas + "/" + ordem.length
+                       + ((tDesenho / 20) % 2 == 0 ? " _" : "");
+
+        // O aquecimento vira barra: o jogador ve a maquina ficando rapida
+        // e entende por que o campo esta esvaziando ao mesmo tempo.
+        int larguraBarra = 120;
+        int bx = Main.CAMPO_X + Main.CAMPO_W - larguraBarra - 10;
+        int by = Main.CAMPO_Y + Main.CAMPO_H - 30;
+
+        g.setColor(new Color(90, 150, 130, 150));
+        g.drawRect(bx, by, larguraBarra, 6);
+
+        g.setColor(new Color(150, 230, 190, 200));
+        g.fillRect(bx, by, (int) (larguraBarra * aquecimento), 6);
+
+        g.drawString("training", bx, by - 4);
 
         g.drawString(texto, Main.CAMPO_X + 8, Main.CAMPO_Y + Main.CAMPO_H - 26);
 

@@ -164,16 +164,28 @@ public class Enemy {
             return;
         }
 
-        Main.player.setPontuacao(Main.player.getPontuacao() + pontos);
+        // Passa pelo ganharPontos e nao mexe na pontuacao direto: e la que
+        // mora a passiva CULTURA MAKER, comprada do Perea.
+        Main.player.ganharPontos(pontos);
 
         // Espalha os itens num circulo pequeno em volta de onde ele morreu.
+        //
+        // UMA PARTE DELES VIRA MOEDA. A conta e por posicao no circulo e
+        // nao por sorteio: com sorteio, dois inimigos iguais dariam
+        // rendas diferentes e o jogador nao teria como planejar a compra.
+        // Assim, a cada 'umaMoedaACada' itens, um e dinheiro — sempre.
+        int aCada = Math.max(1, Config.getInt("moeda.umaMoedaACada", 3));
+
         for (int i = 0; i < itens; i++) {
 
             double ang = (2 * Math.PI * i) / Math.max(1, itens);
 
+            Point.Tipo tipo = (i % aCada == aCada - 1) ? Point.Tipo.MOEDA : Point.Tipo.XP;
+
             Main.points.add(new Point(x + Math.cos(ang) * 12,
                                       y + Math.sin(ang) * 12,
-                                      false));
+                                      false,
+                                      tipo));
         }
     }
 
