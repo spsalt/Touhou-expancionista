@@ -162,6 +162,28 @@ public class BossEnemy extends Enemy {
     private int ticksInvulnerabilidadeNaTroca;
     private int ticksAnuncio;
 
+    /**
+     * RESPIRO ENTRE A ENTRADA DO CHEFE E A PRIMEIRA BALA DELE.
+     *
+     * Entre um spell card e outro ja existia uma janela de folga
+     * (ticksInvulnerabilidadeNaTroca), mas no COMECO da luta nao havia
+     * nenhuma: o dialogo fechava e a primeira bala saia no tick seguinte.
+     *
+     * Isso era pior justamente nas transformacoes. Nas cenas da Adriana e
+     * do Clayton o gatilho CHEFE_TRANSFORMA esta na ULTIMA fala — ou seja,
+     * a explosao vermelha estourava, a caixa de dialogo sumia e o padrao
+     * novo comecava tudo no mesmo instante, com a tela ainda clareando do
+     * estouro e o jogador parado onde a conversa o deixou. Nao havia
+     * reacao possivel: o dano vinha de uma coisa que ele ainda nem tinha
+     * visto na tela.
+     *
+     * A folga usa a MESMA invulnerabilidade da troca de spell em vez de um
+     * cronometro proprio. Duas regras dizendo "o chefe ainda nao esta
+     * lutando" acabariam discordando uma da outra na primeira vez que
+     * alguem mexesse em so uma delas.
+     */
+    private int ticksDeCarenciaNoComeco;
+
     /** Pontos base por capturar um spell card sem morrer nem bombar. */
     private int bonusDeCaptura;
 
@@ -215,7 +237,21 @@ public class BossEnemy extends Enemy {
         emDialogo = false;
 
         if (spellCards.length > 0 && spellAtual == 0 && tSpell == 0) {
+
             anuncio = ticksAnuncio;
+
+            // O RESPIRO. Ver ticksDeCarenciaNoComeco.
+            //
+            // Enquanto isto for maior que zero o chefe nao atira (e nem
+            // pode ser ferido), entao o jogador tem quase dois segundos
+            // pra ler o nome do ataque descendo e sair do lugar onde a
+            // conversa o deixou plantado.
+            //
+            // Math.max e nao atribuicao direta: se ele ja estiver com
+            // alguma invulnerabilidade rodando, encurta-la aqui seria
+            // piorar o que este campo veio consertar.
+            invulneravel = Math.max(invulneravel, ticksDeCarenciaNoComeco);
+
             spellCards[0].iniciar(this);
             Som.tocar(Som.SPELL_INICIA);
         }
@@ -223,6 +259,23 @@ public class BossEnemy extends Enemy {
 
     public boolean isEmDialogo() {
         return emDialogo;
+    }
+
+    /**
+     * Quanto sobrou do HP do spell card atual, de 1 (cheio) a 0.
+     *
+     * Serve pra um ataque mudar de comportamento conforme APANHA, e nao
+     * so conforme o cronometro anda. A diferenca importa: um ataque que
+     * so escala no tempo trata igual quem esta atirando e quem esta
+     * fugindo, e o jogador nao sente que o que ele faz muda alguma coisa.
+     */
+    public double getFracaoDeHpDoSpell() {
+
+        if (hpMaximo <= 0) {
+            return 0;
+        }
+
+        return Math.max(0, Math.min(1, hp / hpMaximo));
     }
 
     /**
@@ -243,6 +296,8 @@ public class BossEnemy extends Enemy {
 
         this.ticksInvulnerabilidadeNaTroca = Config.getInt("chefe.ticksInvulnerabilidadeNaTroca", 90);
         this.ticksAnuncio = Config.getInt("chefe.ticksAnuncio", 120);
+
+        this.ticksDeCarenciaNoComeco = Config.getInt("chefe.ticksDeCarenciaNoComeco", 110);
 
         this.bonusDeCaptura = Config.getInt("chefe.bonusDeCaptura", 12000);
         this.bonusMinimo    = Config.getDouble("chefe.fracaoMinimaDoBonus", 0.25);
@@ -387,6 +442,17 @@ public class BossEnemy extends Enemy {
         // campo de cima ate a posicao de voo, e o jogador pode estar
         // parado no caminho sem ter como saber que devia sair.
         if (emDialogo || Main.player == null) {
+            return;
+        }
+
+        // ENQUANTO ELE E INTOCAVEL, ELE TAMBEM NAO MACHUCA POR ENCOSTO.
+        //
+        // Mesma regra, os dois lados. O caso que isso conserta e feio: o
+        // jogador anda livre durante a conversa e pode acabar parado
+        // exatamente embaixo do chefe. No frame em que o dialogo fecha, o
+        // dano por contato liga — e ele morre por estar num lugar que ate
+        // ali era seguro, sem nada na tela avisando.
+        if (invulneravel > 0) {
             return;
         }
 

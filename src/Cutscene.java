@@ -176,8 +176,29 @@ public class Cutscene {
         /** Efeito tocado quando esta fala COMECA. null = nenhum. */
         final String som;
 
-        /** O que esta fala manda o jogo fazer quando comeca. */
+        /** O que esta fala manda o jogo fazer quando COMECA. */
         final Gatilho gatilho;
+
+        /**
+         * O que esta fala manda o jogo fazer quando o jogador a DISPENSA.
+         *
+         * POR QUE EXISTEM OS DOIS.
+         *
+         * Depende de a coisa acontecer DURANTE a fala ou POR CAUSA dela.
+         *
+         * A chefe entrando voando (CHEFE_ENTRA) e "durante": ela atravessa
+         * a tela enquanto voce le a narracao que anuncia a chegada dela, e
+         * as duas coisas juntas sao a cena.
+         *
+         * A transformacao e "por causa". A Adriana grita a linha dos
+         * cachorros E ENTAO vira. Disparando na entrada, a explosao
+         * estourava atras da caixa de dialogo — o jogador via o clarao
+         * pelas beiradas de um texto que ainda estava sendo escrito, e
+         * ainda tinha que apertar ENTER pra a cena destravar depois que a
+         * transformacao ja tinha acontecido. A ordem ficava invertida: o
+         * efeito antes da fala que o causa.
+         */
+        final Gatilho gatilhoDeSaida;
 
         private Fala(Tipo tipo, Personagem personagem, String texto, String subtitulo,
                      String fundoNovo, Personagem[] elencoNovo) {
@@ -191,6 +212,13 @@ public class Cutscene {
 
         private Fala(Tipo tipo, Personagem personagem, String texto, String subtitulo,
                      String fundoNovo, Personagem[] elencoNovo, String som, Gatilho gatilho) {
+            this(tipo, personagem, texto, subtitulo, fundoNovo, elencoNovo, som,
+                 gatilho, Gatilho.NENHUM);
+        }
+
+        private Fala(Tipo tipo, Personagem personagem, String texto, String subtitulo,
+                     String fundoNovo, Personagem[] elencoNovo, String som,
+                     Gatilho gatilho, Gatilho gatilhoDeSaida) {
             this.tipo = tipo;
             this.personagem = personagem;
             this.texto = texto;
@@ -199,16 +227,28 @@ public class Cutscene {
             this.elencoNovo = elencoNovo;
             this.som = som;
             this.gatilho = gatilho;
+            this.gatilhoDeSaida = gatilhoDeSaida;
         }
 
         /**
-         * Devolve uma copia desta fala com um gatilho pro jogo.
+         * Devolve uma copia desta fala com um gatilho pro jogo, disparado
+         * quando ela ENTRA.
          *
          * Encadeavel (Fala.fala(...).com(Gatilho.CHEFE_ENTRA)) pra nao
          * precisar de uma fabrica nova pra cada combinacao.
          */
         public Fala com(Gatilho g) {
-            return new Fala(tipo, personagem, texto, subtitulo, fundoNovo, elencoNovo, som, g);
+            return new Fala(tipo, personagem, texto, subtitulo, fundoNovo, elencoNovo, som,
+                            g, gatilhoDeSaida);
+        }
+
+        /**
+         * Igual ao com(), mas o gatilho so dispara quando o jogador
+         * DISPENSA esta fala. Ver o campo gatilhoDeSaida.
+         */
+        public Fala aoSair(Gatilho g) {
+            return new Fala(tipo, personagem, texto, subtitulo, fundoNovo, elencoNovo, som,
+                            gatilho, g);
         }
 
         /** Fala que dispara um efeito sonoro (ex: a voiceline do Clayton). */
@@ -307,6 +347,24 @@ public class Cutscene {
     private boolean avancarAnterior = false;
     private boolean escAnterior = false;
 
+    /**
+     * A cerimonia da armadura estava rodando no tick passado?
+     *
+     * Guardado pra detectar os dois INSTANTES da cerimonia (o comeco e o
+     * fim), e nao o estado dela — ver o tratamento no tick().
+     */
+    private boolean ascensaoAnterior = false;
+
+    /**
+     * Ticks que a conversa ainda deve ficar FORA DA FRENTE por causa de um
+     * efeito em cena (hoje: a explosao da transformacao).
+     *
+     * Enquanto for maior que zero a caixa some, o Z/ENTER/ESC nao
+     * respondem e — se ja nao houver mais fala — a cena tambem nao termina.
+     * Ver pausarParaCena().
+     */
+    private int pausaCenica = 0;
+
     /** Ja tocou o efeito da fala atual? Evita repetir a cada tick. */
     private boolean somTocado = false;
 
@@ -342,7 +400,26 @@ public class Cutscene {
 
         Gatilho g = gatilhoPendente;
         gatilhoPendente = Gatilho.NENHUM;
-        gatilhoDisparado = false;
+
+        // AQUI TINHA UM "gatilhoDisparado = false" — e ele era o estrago.
+        //
+        // A trava do gatilhoDisparado existe justamente pra a fala disparar
+        // o pedido UMA vez. Zerar ela aqui rearmava o gatilho toda vez que
+        // alguem o consumia, e o ciclo se fechava sozinho: a fase consumia,
+        // isto rearmava, o tick seguinte disparava de novo, a fase consumia
+        // de novo. Sessenta pedidos por segundo, o tempo inteiro em que
+        // aquela fala estivesse na tela.
+        //
+        // No CHEFE_ENTRA passava despercebido porque o "!chefeSpawnado"
+        // barrava as repeticoes. O CHEFE_TRANSFORMA nao tem barreira
+        // nenhuma: cada repeticao jogava fora a chefe, criava outra com HP
+        // cheio e soltava mais uma explosao vermelha. Era isso que aparecia
+        // como um borrao de estouros atras da caixa de dialogo — e apertar
+        // ENTER "resolvia" porque passar a fala era o unico jeito de parar
+        // a metralhadora.
+        //
+        // Quem rearma o gatilho e o proximaLinha(), quando a fala muda.
+        // Que e o unico momento em que fazer isso significa alguma coisa.
 
         return g;
     }
@@ -355,6 +432,8 @@ public class Cutscene {
         charsMostrados = 0;
         t = 0;
         somTocado = false;
+        ascensaoAnterior = false;
+        pausaCenica = 0;
         fundoAtual = fundoInicial;
 
         if (fundoInicial != null && Main.fundo != null) {
@@ -368,8 +447,69 @@ public class Cutscene {
         }
     }
 
+    /**
+     * A cena so acaba de verdade quando nao ha mais fala E nao ha mais
+     * pausa cenica rodando.
+     *
+     * A pausa segurando o fim e o que permite a ULTIMA fala disparar um
+     * efeito ao sair. Nas cenas da Adriana e do Clayton a transformacao
+     * esta justamente na ultima linha: sem isto, dispensar essa linha
+     * fecharia a conversa no mesmo frame, o Main chamaria comecarLuta() e
+     * a explosao aconteceria com a chefe ja atirando por cima dela.
+     */
     public boolean acabou() {
-        return indice >= falas.length;
+
+        // O GATILHO PENDENTE SEGURA O FIM DA CENA. Sem esta linha eu quebrei
+        // a luta da Adriana.
+        //
+        // O gatilho de saida e disparado no proximaLinha(), e quem o
+        // consome e a fase — que roda DEPOIS da cutscene dentro do mesmo
+        // frame (ver Main.tickDoJogo). Na ultima fala isso virava uma
+        // corrida perdida: dispensar a linha punha o pedido na caixa E
+        // fechava a cena no mesmo tick, o Main chamava terminarDialogo(),
+        // o cutsceneAtual virava null, e o atenderPedidosDaConversa()
+        // caia no "if (!emDialogo()) return" antes de olhar a caixa.
+        //
+        // O pedido de transformacao era jogado fora sem nunca ter sido
+        // lido. A Adriana entrava no estagio 3 ainda na forma base — ou
+        // seja, a segunda parte da luta simplesmente nao existia, e o
+        // jogador refazia a primeira.
+        //
+        // Segurando a cena enquanto ha pedido na caixa, a entrega e
+        // garantida: a fase sempre tem um frame pra ler. E nao trava,
+        // porque a fase consome incondicionalmente todo tick.
+        return indice >= falas.length
+            && pausaCenica <= 0
+            && gatilhoPendente == Gatilho.NENHUM;
+    }
+
+    /** Ainda ha fala na tela? Falso durante a pausa cenica do fim. */
+    private boolean temFala() {
+        return indice < falas.length;
+    }
+
+    /**
+     * ALGO ESTA ACONTECENDO EM CENA — a conversa sai da frente e espera.
+     *
+     * Vale pra cerimonia da armadura e pra pausa pedida por um gatilho
+     * (a explosao da transformacao). Nos dois casos a caixa de dialogo
+     * some, o Z/ENTER/ESC nao respondem e o efeito toca sozinho sobre o
+     * campo limpo.
+     */
+    private boolean cenaOcupada() {
+        return Main.armaduraSeFormando() || pausaCenica > 0;
+    }
+
+    /**
+     * Segura a conversa por N ticks pra um efeito acontecer sem a caixa
+     * de dialogo em cima dele.
+     *
+     * Quem chama e o codigo que ATENDE um gatilho (ver
+     * phase1.transformarChefe): a fase e que sabe quanto dura o efeito
+     * que ela acabou de disparar, nao a cutscene.
+     */
+    public void pausarParaCena(int ticks) {
+        pausaCenica = Math.max(pausaCenica, Math.max(0, ticks));
     }
 
     /* =========================
@@ -379,6 +519,17 @@ public class Cutscene {
     public void tick() {
 
         if (acabou()) {
+            return;
+        }
+
+        if (pausaCenica > 0) {
+            pausaCenica--;
+        }
+
+        // Depois da ultima fala so resta escoar a pausa: nao ha texto pra
+        // escrever, som pra tocar nem retrato pra animar.
+        if (!temFala()) {
+            t++;
             return;
         }
 
@@ -398,9 +549,62 @@ public class Cutscene {
         // nao ter que reler tudo, mas pular uma cena e diferente de pular
         // um EVENTO — e a armadura e evento: o jogador precisa dela pra
         // ter bomba na luta seguinte.
-        boolean travadoPelaAscensao = Main.armaduraSeFormando();
+        //
+        // A MESMA TRAVA VALE PRA PAUSA CENICA (a explosao da
+        // transformacao): enquanto o efeito toca, a conversa nao anda e
+        // nao responde. Sem isso, o jogador saia apertando e a luta
+        // comecava com a explosao ainda no ar.
+        boolean travado = cenaOcupada();
 
-        boolean avancar = (Main.z || Main.enter) && !travadoPelaAscensao;
+        // A CERIMONIA CONSOME A FALA QUE CHAMOU ELA.
+        //
+        // O problema era de ORDEM, e dava pra ver na tela: a fala do grito
+        // ("Fazer o quê. ESPANDAAAAA!") dispara a cerimonia no frame em que
+        // ENTRA. Ou seja, ela mal comecava a ser escrita e a caixa ja saia
+        // da frente; nove segundos depois, com a armadura ja fechada no
+        // corpo do estudante, a caixa voltava — mostrando aquela mesma
+        // linha, de novo, do zero. O jogador gritava DEPOIS de ja ter se
+        // transformado.
+        //
+        // Dois instantes, dois tratamentos:
+        //
+        //   COMECOU  o texto e escrito de uma vez, pra a linha ficar
+        //            legivel inteira durante o fade da caixa saindo. Antes
+        //            ela sumia no meio da digitacao.
+        //
+        //   TERMINOU a conversa anda uma linha sozinha. A caixa reaparece
+        //            ja na narracao seguinte ("Uma armadura de energia...
+        //            te cobre"), que e exatamente o que acabou de
+        //            acontecer — em vez de repetir o grito.
+        //
+        // Isto vale so pra ASCENSAO, e nao pra pausa cenica: na pausa o
+        // gatilho e de SAIDA, ou seja, o jogador ja dispensou a linha e o
+        // indice ja andou. Avancar de novo comeria uma fala.
+        boolean ascensaoAgora = Main.armaduraSeFormando();
+
+        if (ascensaoAgora && !ascensaoAnterior) {
+            charsMostrados = falas[indice].texto.length();
+        }
+
+        if (!ascensaoAgora && ascensaoAnterior) {
+
+            ascensaoAnterior = false;
+
+            proximaLinha();
+
+            // Se o jogador estiver com Z apertado quando a armadura fecha,
+            // sem isto o mesmo toque que ele nem soltou ainda pularia
+            // tambem a linha nova.
+            avancarAnterior = (Main.z || Main.enter);
+
+            if (acabou() || !temFala()) {
+                return;
+            }
+        }
+
+        ascensaoAnterior = ascensaoAgora;
+
+        boolean avancar = (Main.z || Main.enter) && !travado;
 
         if (avancar && !avancarAnterior) {
 
@@ -417,12 +621,28 @@ public class Cutscene {
 
         // ESC pula a cutscene inteira, pra quem ja assistiu nao precisar
         // clicar em cada linha de novo enquanto testa a fase.
-        if (Main.esc && !escAnterior && !travadoPelaAscensao) {
+        if (Main.esc && !escAnterior && !travado) {
+
+            // PULAR A CENA NAO PODE PULAR O EVENTO DELA.
+            //
+            // O ESC existe pra quem ja assistiu nao reler tudo. Mas se a
+            // cena tinha um gatilho de saida ainda por disparar (a
+            // transformacao da chefe), sair por aqui deixava o jogo num
+            // estado que a fase nao sabe consertar: estagio de forma
+            // maligna com a chefe na forma base.
+            //
+            // Entao antes de fechar, o ESC recolhe o pedido que faltava.
+            Gatilho pendenteNoPulo = gatilhoDeSaidaQueFalta();
+
+            if (pendenteNoPulo != Gatilho.NENHUM) {
+                gatilhoPendente = pendenteNoPulo;
+            }
+
             indice = falas.length;
         }
         escAnterior = Main.esc;
 
-        if (!acabou()) {
+        if (temFala()) {
 
             String texto = falas[indice].texto;
 
@@ -520,7 +740,7 @@ public class Cutscene {
      */
     private void animarRetratos() {
 
-        if (acabou()) {
+        if (!temFala()) {
             return;
         }
 
@@ -558,14 +778,44 @@ public class Cutscene {
         Som.tocar(falas[indice].som);
     }
 
+    /**
+     * O primeiro gatilho de saida que ainda nao aconteceu, daqui ate o fim
+     * da cena. NENHUM se nao ha nada pendente.
+     *
+     * Usado so pelo ESC. Uma cena tem no maximo um gatilho de saida, entao
+     * pegar o primeiro basta — e se um dia tiver dois, o certo vai ser
+     * repensar a cena, nao guardar uma fila aqui.
+     */
+    private Gatilho gatilhoDeSaidaQueFalta() {
+
+        for (int i = indice; i < falas.length; i++) {
+            if (falas[i].gatilhoDeSaida != Gatilho.NENHUM) {
+                return falas[i].gatilhoDeSaida;
+            }
+        }
+
+        return Gatilho.NENHUM;
+    }
+
     private void proximaLinha() {
+
+        // O GATILHO DE SAIDA DISPARA AQUI, antes do indice andar: ele
+        // pertence a fala que esta sendo DISPENSADA, nao a proxima.
+        //
+        // E o que poe a transformacao na ordem certa — a chefe grita a
+        // linha, o jogador dispensa ela, e SO ENTAO a explosao acontece,
+        // com a caixa de dialogo ja saindo da frente.
+        if (temFala() && falas[indice].gatilhoDeSaida != Gatilho.NENHUM) {
+            gatilhoPendente = falas[indice].gatilhoDeSaida;
+        }
+
         indice++;
         charsMostrados = 0;
         t = 0;
         somTocado = false;
         gatilhoDisparado = false;
 
-        if (!acabou()) {
+        if (temFala()) {
             aplicarFundoDaFalaAtual();
         }
     }
@@ -583,7 +833,11 @@ public class Cutscene {
      */
     public void render(Graphics2D g) {
 
-        if (acabou()) {
+        // O !temFala() cobre a PAUSA CENICA DO FIM: a ultima fala ja foi
+        // dispensada e a conversa so esta segurando o fecho enquanto a
+        // explosao toca. Nao ha nada pra desenhar, e ler falas[indice]
+        // aqui estouraria o array.
+        if (acabou() || !temFala()) {
             return;
         }
 
@@ -601,7 +855,7 @@ public class Cutscene {
         //
         // O sumico e GRADUAL: cortar de um frame pro outro pareceria bug
         // de renderizacao, e nao a cena abrindo espaco.
-        if (Main.armaduraSeFormando()) {
+        if (cenaOcupada()) {
             saidaDaCena = Math.min(1.0, saidaDaCena + 1.0 / Math.max(1,
                     Config.getInt("cutscene.ticksParaSairDaFrente", 22)));
         } else {
@@ -1120,7 +1374,7 @@ public class Cutscene {
             // base voando no campo.
             Fala.falaComElenco(ADRIANA_MALIGNA,
                 "DOS CACHORROS QUE SABEM CÁLCULO! DERIVEM ELE ATÉ O 0!",
-                new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA_MALIGNA }).com(Gatilho.CHEFE_TRANSFORMA),
+                new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA_MALIGNA }).aoSair(Gatilho.CHEFE_TRANSFORMA),
 
         }, new Personagem[] { ESTUDANTE_EXPANSIVO, ADRIANA }, "sprites/ambient/sala7.png");
     }
@@ -1210,7 +1464,7 @@ public class Cutscene {
             // Roteiro.txt linha 51 — AQUI ele vira o Tab maligno.
             Fala.falaComElenco(CLAYTON_MALIGNO, "E aqui.... continuamos ... #focoforçaefé #Spark #recognas",
                                new Personagem[] { ESTUDANTE_EXPANSIVO, CLAYTON_MALIGNO })
-                .com(Gatilho.CHEFE_TRANSFORMA),
+                .aoSair(Gatilho.CHEFE_TRANSFORMA),
 
         }, new Personagem[] { ESTUDANTE_EXPANSIVO, CLAYTON }, "sprites/ambient/dco.png");
     }
@@ -1400,7 +1654,7 @@ public class Cutscene {
             // Roteiro.txt linha 70 — aqui ele vira a IA
             Fala.falaComElenco(PAPA_IA, "Agora você vai saber o gosto da derrota!",
                                new Personagem[] { ESTUDANTE_EXPANSIVO, PAPA_IA })
-                .com(Gatilho.CHEFE_TRANSFORMA),
+                .aoSair(Gatilho.CHEFE_TRANSFORMA),
 
             // Roteiro.txt linha 71
             Fala.fala(ESTUDANTE_EXPANSIVO, "Você falou que ia atacar o UBA. Ninguém encosta no UBA!!!! "
@@ -1450,11 +1704,10 @@ public class Cutscene {
                                 + "foi parar no UBA.",
                                   "sprites/ambient/uba.png"),
 
-            // Roteiro.txt linha 81 — o virus, ja sem hospedeiro, gritando
-            // de algum lugar. Narracao e nao fala: ele nao tem mais corpo,
-            // entao nao ha retrato pra pendurar essa linha.
-            Fala.narracao("Em algum lugar, sem corpo nenhum pra habitar, o vírus ainda grita: "
-                        + "\"ARRRRGHHHHHH NÃO PODE ACABAR ASSIMMMMMM NAOOOOOOOOOOOO\""),
+            // (A fala do virus gritando sem corpo saiu daqui. A cena
+            //  terminava com o vilao ainda falando, e isso reabria a
+            //  historia bem no ponto em que ela devia fechar: a ultima
+            //  imagem passou a ser o pessoal no uba, nao a ameaca.)
 
             Fala.titulo("FIM", "obrigado por jogar"),
 

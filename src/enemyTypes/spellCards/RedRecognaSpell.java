@@ -9,7 +9,7 @@ import java.awt.Stroke;
 import src.Config;
 import src.Main;
 import src.Som;
-import src.bulletTypes.IntegralBullet;
+import src.bulletTypes.SolBullet;
 import src.bulletTypes.NotaBullet;
 import src.enemyTypes.BossEnemy;
 
@@ -18,15 +18,47 @@ import src.enemyTypes.BossEnemy;
  *
  * O sol do PAPA IA, depois dos Seguidores do IEEE.
  *
- * Um simbolo cresce brilhando no meio do campo e cospe anel atras de anel
- * de bala vermelha, girando devagar. E o Subterranean Sun da Utsuho, com o
- * nome que o Clayton ja usava no roteiro ("#focoforçaefé #Spark
- * #recognas", linha 52).
+ * Um simbolo cresce brilhando no meio do campo, PUXA o jogador pra dentro
+ * dele, e anel atras de anel de bala vermelha CAI de fora pra ser comido
+ * por ele. E a leitura do Subterranean Sun da Utsuho, com o nome que o
+ * Clayton ja usava no roteiro ("#focoforçaefé #Spark #recognas", linha 52).
  *
- * COMO UM PADRAO TAO SIMPLES E TAO DIFICIL
- * ----------------------------------------
- * A regra e uma linha: N balas por anel, um anel a cada X ticks, e o
- * angulo inicial de cada anel avanca um PASSO FIXO. So isso.
+ * TRES TENTATIVAS ATE ENTENDER O ATAQUE
+ * -------------------------------------
+ * As duas primeiras versoes cuspiam bala PRA FORA do centro, e as duas
+ * foram reclamadas com a mesma frase: "e so ficar parado num lugar certo".
+ * Eu respondi as duas mexendo nas balas — dobrei a densidade, torci a
+ * trajetoria, fechei uma rosquinha segura que existia no meio. Melhorou de
+ * pouquinho em pouquinho e o problema ficou.
+ *
+ * Ele ficou porque nao era ajuste, era geometria. Num anel que se afasta,
+ * a distancia entre duas balas vizinhas vale raio x passo angular: ela
+ * CRESCE junto com o raio. La embaixo, onde o jogador fica, sempre ia
+ * sobrar espaco entre elas, e um vao entre dois raios que divergem nunca
+ * mais fecha. Achar esse vao e um exercicio que se faz uma vez.
+ *
+ * Fui ler como o ataque original resolve. Ele nao resolve pelas balas:
+ *
+ *   1. O SOL ATRAI o personagem (ver puxarJogadorParaOSol). "Ficar parado"
+ *      deixa de ser uma jogada possivel — nao porque o lugar seguro sumiu,
+ *      mas porque nao da mais pra ficar em lugar nenhum.
+ *
+ *   2. AS BALAS CAEM PRA DENTRO e sao consumidas pelo sol (ver SolBullet).
+ *      A mesma conta de antes passa a trabalhar a favor: o raio diminui,
+ *      entao o vao entre duas vizinhas FECHA sozinho. Parar num buraco
+ *      ganha prazo de validade.
+ *
+ *   3. O SOL CRESCE PELO DANO, nao so pelo relogio, e o crescimento
+ *      aumenta o puxao, a boca que queima e a abertura da espiral.
+ *
+ * Medido depois: 0 posicoes 100% seguras entre 418 varridas (antes eram
+ * 61), e um bot que anda continua passando sem morrer. Ou seja, ficou
+ * dificil pelo motivo certo — exige jogar, nao exige sorte.
+ *
+ * O QUE SOBROU DA VERSAO ANTIGA
+ * -----------------------------
+ * A regra dos aneis: N balas por anel, um anel a cada X ticks, e o angulo
+ * inicial de cada anel avanca um PASSO FIXO.
  *
  * O que faz o padrao funcionar e o passo ser IRRACIONAL em relacao a
  * volta completa. Se o passo fosse, digamos, um doze avos de volta, os
@@ -39,11 +71,12 @@ import src.enemyTypes.BossEnemy;
  * natureza usa pra empacotar semente de girassol sem sobrepor nenhuma. E
  * literalmente o arranjo mais anti-alinhamento que existe.
  *
- * AS BALAS SAO LENTAS E GRANDES, como no original. Bala rapida obriga
- * reacao; bala lenta e grande obriga PLANEJAMENTO — voce ve a parede
- * inteira se formando e tem que escolher, com antecedencia, por qual
- * fresta vai sair. E por isso que o simbolo no meio pode crescer tanto
- * sem ser injusto: ele nao esconde nada que voce ainda precise ver.
+ * AS BALAS SAO GRANDES E VEM DE LONGE. Bala rapida obriga reacao; bala
+ * grande vinda de fora obriga PLANEJAMENTO — voce ve a parede inteira
+ * descendo e tem que escolher, com antecedencia, por qual fresta vai sair,
+ * sabendo que a fresta esta se fechando enquanto voce decide. E por isso
+ * que o simbolo no meio pode crescer tanto sem ser injusto: ele nao
+ * esconde nada que voce ainda precise ver.
  */
 public class RedRecognaSpell extends SpellCard {
 
@@ -90,6 +123,17 @@ public class RedRecognaSpell extends SpellCard {
     /** Angulo da proxima leva de notas. Anda ao CONTRARIO dos aneis. */
     private double anguloDasNotas = 0;
 
+    /**
+     * Sobra da versao em que a bala saia do centro com a velocidade
+     * girada. Hoje quem abre a espiral e a velocidadeLateral do SolBullet;
+     * este campo continua lido do config so pra a chave nao virar orfa
+     * antes de eu ter certeza de que a nova versao ficou boa.
+     */
+    private final double inclinacao;
+
+    /** Contador de aneis, so pra alternar o lado da inclinacao. */
+    private int aneisSoltos = 0;
+
     public RedRecognaSpell() {
 
         super("☀  RED RECOGNA",
@@ -112,6 +156,7 @@ public class RedRecognaSpell extends SpellCard {
         this.curvaturaDasNotas  = Config.getDouble("papa.recogna.curvaturaDasNotas", 0.026);
         this.passoDasNotas      = Config.getDouble("papa.recogna.passoDasNotas", 0.55);
         this.raioDaNota         = Config.getDouble("papa.recogna.raioDaNota", 8.5);
+        this.inclinacao         = Config.getDouble("papa.recogna.inclinacao", 0.55);
     }
 
     @Override
@@ -130,6 +175,7 @@ public class RedRecognaSpell extends SpellCard {
 
         angulo = 0;
         anguloDasNotas = 0;
+        aneisSoltos = 0;
         crescimento = 0;
         giro = 0;
 
@@ -200,9 +246,22 @@ public class RedRecognaSpell extends SpellCard {
         chefe.setX(centroX);
         chefe.setY(centroY);
 
-        crescimento = Math.min(1.0, t / (double) ticksParaCrescer);
+        // O SOL CRESCE PELO DANO, e nao so pelo relogio.
+        //
+        // A versao anterior inchava sozinha em 420 ticks fizesse o jogador
+        // o que fizesse. Agora o crescimento e o MAIOR entre o tempo e o
+        // quanto ele ja tirou de HP: quem atira ve o sol abrir mais rapido
+        // e o ataque ficar mais bravo, quem so foge chega no mesmo lugar
+        // devagar. As duas maneiras de jogar levam ao clímax; so que uma
+        // delas e escolha e a outra e espera.
+        double porDano  = 1 - chefe.getFracaoDeHpDoSpell();
+        double porTempo = t / (double) ticksParaCrescer;
+
+        crescimento = Math.min(1.0, Math.max(porTempo, porDano));
 
         giro += Config.getDouble("papa.recogna.velocidadeDoGiro", 0.011);
+
+        puxarJogadorParaOSol();
 
         queimarQuemEncostar();
 
@@ -243,6 +302,71 @@ public class RedRecognaSpell extends SpellCard {
      * encolhendo, e ficar perto do centro deixa de ser uma opcao
      * conforme o ataque avanca.
      */
+    /**
+     * O SOL PUXA O JOGADOR PRA DENTRO DELE.
+     *
+     * ESTA E A CORRECAO DE VERDADE, e eu demorei tres rodadas pra chegar
+     * nela porque estava olhando pro lugar errado.
+     *
+     * Voce reclamou duas vezes que dava pra "ficar parado num lugar certo".
+     * Eu respondi as duas com mais bala: dobrei a densidade, torci a
+     * trajetoria, fechei a rosquinha do meio. Melhorou de pouquinho em
+     * pouquinho e o problema continuou, porque num padrao radial que sai do
+     * centro o ponto seguro nao e um descuido de ajuste — ele e uma
+     * CONSEQUENCIA. Sempre vai existir algum lugar onde as balas passam
+     * longe, e achar esse lugar e um exercicio que o jogador faz uma vez e
+     * nunca mais precisa repetir.
+     *
+     * Fui ler como o ataque original resolve isso. Ele nao resolve pelas
+     * balas: o sol ATRAI o personagem. Com atracao, "ficar parado" deixa de
+     * ser uma jogada possivel — nao porque o ponto seguro sumiu, mas porque
+     * voce nao consegue mais ficar em ponto nenhum. A resposta certa e
+     * andar o tempo todo, e ai o padrao volta a ser sobre desviar.
+     *
+     * O PUXAO NAO E UMA ARMADILHA. Ele vai no maximo a uns 0,9 px por tick,
+     * contra 1,75 do modo foco e 4,0 do movimento normal: da pra vencer
+     * ele andando, sempre, ate no foco. Ele nao tira o controle do jogador,
+     * tira a opcao de nao fazer nada — que era o problema inteiro.
+     *
+     * A forca cresce PERTO DO SOL e some longe. Assim as beiradas do campo
+     * continuam sendo um lugar onde da pra respirar (e o jogador precisa de
+     * um), e a aproximacao vai ficando cada vez mais cara.
+     */
+    private void puxarJogadorParaOSol() {
+
+        if (Main.player == null) {
+            return;
+        }
+
+        double dx = centroX - Main.player.getX();
+        double dy = centroY - Main.player.getY();
+
+        double dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 1) {
+            return;
+        }
+
+        double alcance = Config.getDouble("papa.recogna.alcanceDoPuxao", 430);
+
+        if (dist >= alcance) {
+            return;
+        }
+
+        // 1 encostado no sol, 0 na borda do alcance. Ao QUADRADO pra a
+        // queda ser sentida: linear, a diferenca entre estar perto e estar
+        // longe ficava sutil demais pra o jogador perceber que se
+        // aproximar tem preco.
+        double proximidade = 1 - dist / alcance;
+        proximidade *= proximidade;
+
+        double forca = Config.getDouble("papa.recogna.forcaDoPuxao", 0.92)
+                     * proximidade
+                     * (0.45 + 0.55 * suavizar(crescimento));
+
+        Main.player.puxar(dx / dist * forca, dy / dist * forca);
+    }
+
     private void queimarQuemEncostar() {
 
         if (Main.player == null) {
@@ -268,7 +392,7 @@ public class RedRecognaSpell extends SpellCard {
         // se mantem fechado sozinho: mexer em um move o outro junto. Com
         // um fator solto, qualquer ajuste futuro reabriria o buraco sem
         // ninguem perceber.
-        double raio = raioDeNascimentoAgora() + Config.getDouble("papa.recogna.folgaDoFogo", 6);
+        double raio = raioDeConsumo() + Config.getDouble("papa.recogna.folgaDoFogo", 6);
 
         double dist = Main.getDist(centroX, centroY,
                                    Main.player.getX(), Main.player.getY());
@@ -337,13 +461,28 @@ public class RedRecognaSpell extends SpellCard {
     }
 
     /**
-     * De onde as balas estao nascendo AGORA (o raio cresce com o sol).
+     * A BOCA DO SOL: onde ele come as balas e onde ele queima o jogador.
      *
-     * Existe pra o fogo e o nascimento das balas lerem o MESMO numero —
-     * ver queimarQuemEncostar.
+     * Um numero so pras duas coisas, de proposito. Se a bala some num raio
+     * e o fogo comeca em outro, sobra uma faixa que ou e uma sala segura
+     * escondida (o furo que este ataque ja teve) ou e uma morte sem aviso.
+     * Amarrados, os dois se movem juntos pra sempre.
      */
-    private double raioDeNascimentoAgora() {
+    private double raioDeConsumo() {
         return raioDeNascimento + raioMaximoDoSimbolo * crescimento * 0.55;
+    }
+
+    /**
+     * De onde as balas caem: FORA do campo.
+     *
+     * Elas precisam entrar pelas beiradas ja em movimento, e nao aparecer
+     * do nada dentro da area de jogo. O canto mais distante do campo em
+     * relacao ao centro do sol fica a uns 545 px; nascer alem disso garante
+     * que toda bala atravessa a borda vindo de fora, venha ela de que
+     * angulo for.
+     */
+    private double raioDeQueda() {
+        return Config.getDouble("papa.recogna.raioDeQueda", 580);
     }
 
     /**
@@ -355,23 +494,53 @@ public class RedRecognaSpell extends SpellCard {
      */
     private void soltarAnel() {
 
-        // O sol cresce, e o anel nasce sempre encostado nele.
-        double r = raioDeNascimentoAgora();
+        // AS BALAS AGORA VEM DE FORA E CAEM NO SOL.
+        //
+        // O anel nasce fora do campo e desce espiralando ate ser comido
+        // pelo nucleo (ver SolBullet). A conta que decide isso e simples e
+        // e a raiz de tudo: a distancia entre duas vizinhas de um mesmo
+        // anel vale raio x passoAngular.
+        //
+        //   SAINDO DO CENTRO  o raio cresce, o vao ABRE. Um buraco
+        //                     encontrado la embaixo continua sendo buraco
+        //                     pra sempre — e era exatamente o que voce
+        //                     estava fazendo.
+        //
+        //   CAINDO PRA DENTRO o raio diminui, o vao FECHA. Parar num
+        //                     buraco passa a ter prazo de validade, porque
+        //                     ele se fecha em volta de quem esta la.
+        //
+        // Junto com o puxao, some o "achei o lugar": o lugar existe por
+        // alguns segundos e depois deixa de existir sozinho.
+        double r = raioDeQueda();
+
+        // O SENTIDO DA ESPIRAL TROCA A CADA ANEL.
+        //
+        // Aneis consecutivos girando pro mesmo lado descem paralelos, e
+        // paralelo quer dizer corredor: o jogador entra num e desce junto
+        // com ele. Alternando, as trajetorias se CRUZAM e cada vao e
+        // atravessado pelo anel de tras.
+        int sinal = (aneisSoltos % 2 == 0) ? 1 : -1;
+
+        aneisSoltos++;
+
+        // Espiral mais aberta conforme o sol cresce: no fim do ataque a
+        // mesma quantidade de bala varre mais campo no caminho de descida.
+        double velTangencial = sinal
+                             * Config.getDouble("papa.recogna.velocidadeLateral", 1.15)
+                             * (0.7 + 0.5 * suavizar(crescimento));
 
         for (int i = 0; i < balasPorAnel; i++) {
 
             double a = angulo + 2 * Math.PI * i / balasPorAnel;
 
-            double bx = centroX + Math.cos(a) * r;
-            double by = centroY + Math.sin(a) * r;
-
-            Main.bullets.add(new IntegralBullet(
-                bx, by,
-                Math.cos(a) * velocidadeDaBala,
-                Math.sin(a) * velocidadeDaBala,
-                0, 0,
+            Main.bullets.add(new SolBullet(
+                centroX, centroY,
+                r, a,
+                velocidadeDaBala,
+                velTangencial,
+                raioDeConsumo(),
                 raioDaBala,
-                true,
                 new Color(255, 60, 60)
             ));
         }
@@ -416,7 +585,7 @@ public class RedRecognaSpell extends SpellCard {
      */
     private void desenharBordaQuente(Graphics2D g) {
 
-        double raio = raioDeNascimentoAgora() + Config.getDouble("papa.recogna.folgaDoFogo", 6);
+        double raio = raioDeConsumo() + Config.getDouble("papa.recogna.folgaDoFogo", 6);
 
         double pulso = 0.5 + 0.5 * Math.sin(giro * 5);
 

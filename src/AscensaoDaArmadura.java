@@ -62,6 +62,18 @@ public class AscensaoDaArmadura {
 
     private static final Random RNG = new Random();
 
+    /* --- o crescimento do grito, em numeros com nome --- */
+
+    /** Tamanho relativo com que o grito entra. */
+    private static final double GRITO_ESCALA_INICIAL = 0.94;
+
+    /** Quanto ele cresce do inicio ate o fim do tempo em tela. */
+    private static final double GRITO_CRESCIMENTO = 0.10;
+
+    /** O maior que ele fica. E por este que a largura e conferida. */
+    private static final double ESCALA_FINAL_DO_GRITO =
+            GRITO_ESCALA_INICIAL + GRITO_CRESCIMENTO;
+
     private final List<Fiapo> fiapos = new ArrayList<>();
 
     private int t = 0;
@@ -288,12 +300,42 @@ public class AscensaoDaArmadura {
 
         // Cresce um tiquinho enquanto esta na tela: um texto imovel de
         // corpo 54 parece um cartaz colado; crescendo devagar, ele empurra.
-        double escala = 0.94 + 0.10 * Math.min(1, dt / (double) (entra + fica));
+        double escala = GRITO_ESCALA_INICIAL
+                      + GRITO_CRESCIMENTO * Math.min(1, dt / (double) (entra + fica));
 
         String texto = Config.getString("ascensao.grito", "ESPANDAAAAA!!!!!!!!!");
 
+        // O GRITO SE AJUSTA PRA CABER NO CAMPO.
+        //
+        // O corpo 54 foi escolhido no olho e vazava pelos dois lados: sao
+        // 20 caracteres, e em Monospaced cada um ocupa perto de 0,6 do
+        // corpo — 20 x 32 = 648 px num campo de 600. Sobrava pra fora
+        // justamente o comeco e o fim da palavra.
+        //
+        // Podia ser so um numero menor no config, mas ai o proximo grito
+        // que alguem escrevesse (ou um "!" a mais) voltaria a vazar. Medir
+        // e encolher resolve pra qualquer texto.
+        //
+        // A MEDIDA E FEITA NO PICO, nao no tamanho de agora: o grito
+        // CRESCE enquanto esta na tela, entao ajustar pelo tamanho atual
+        // faria ele caber no comeco e transbordar bem no fim, que e onde
+        // ele esta mais visivel.
+        int margem = Config.getInt("ascensao.margemDoGrito", 18);
+        int larguraMax = Math.max(40, Main.CAMPO_W - 2 * margem);
+
+        int tamanhoConfig = Math.max(8, Config.getInt("ascensao.tamanhoDoGrito", 54));
+        int tamanhoNoPico = Math.max(8, (int) (tamanhoConfig * ESCALA_FINAL_DO_GRITO));
+
+        g.setFont(new java.awt.Font("Monospaced", java.awt.Font.BOLD, tamanhoNoPico));
+
+        int larguraNoPico = g.getFontMetrics().stringWidth(texto);
+
+        double couber = (larguraNoPico > larguraMax)
+                      ? larguraMax / (double) larguraNoPico
+                      : 1.0;
+
         g.setFont(new java.awt.Font("Monospaced", java.awt.Font.BOLD,
-                                    (int) (Config.getInt("ascensao.tamanhoDoGrito", 54) * escala)));
+                                    Math.max(8, (int) (tamanhoConfig * couber * escala))));
 
         java.awt.FontMetrics fm = g.getFontMetrics();
 

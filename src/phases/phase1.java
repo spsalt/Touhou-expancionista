@@ -263,6 +263,51 @@ public class phase1 {
     }
 
     /**
+     * Poe a chefe do estagio em cena JA NA FORMA BASE, calada e imune,
+     * antes da conversa de transformacao comecar.
+     *
+     * AQUI ESTAVA O BUG DAS TRANSFORMACOES.
+     *
+     * As cenas de transformacao (Adriana, Clayton e PAPA) disparam o
+     * gatilho CHEFE_TRANSFORMA numa fala especifica, e quem atende esse
+     * gatilho e o transformarChefe() — que so faz alguma coisa se
+     * 'chefeAtual' NAO for null.
+     *
+     * So que o estagio anterior termina chamando proximoEstagio(), e ele
+     * zera o chefeAtual. Resultado: quando a fala pedia a transformacao,
+     * nao havia ninguem pra transformar. O gatilho era consumido em
+     * silencio, a explosao vermelha nunca saia e a chefe so aparecia
+     * DEPOIS da conversa, ja na forma maligna, como se tivesse trocado
+     * fora de cena.
+     *
+     * Nada disso dava erro: o codigo do gatilho tem um "&& chefeAtual !=
+     * null" que simplesmente pulava tudo. Bug silencioso, do pior tipo.
+     *
+     * Com a chefe em cena antes da cena comecar, o gatilho encontra o
+     * alvo — e a transformacao acontece na frente do jogador, no momento
+     * exato da fala.
+     */
+    private void porChefeEmCenaParaTransformar(String cenario) {
+
+        if (chefeSpawnado || chefeAtual != null) {
+            return;
+        }
+
+        chefeSpawnado = true;
+
+        if (cenario != null) {
+            Main.fundo.trocarImagem(cenario);
+        }
+
+        chefeAtual = criarChefeDoEstagio(false);
+
+        if (chefeAtual != null) {
+            chefeAtual.entrarEmDialogo();
+            Main.enemies.add(chefeAtual);
+        }
+    }
+
+    /**
      * Troca a chefe pela forma seguinte SEM ela sair do lugar.
      *
      * O sprite em jogo tem que virar no mesmo instante que o retrato da
@@ -273,7 +318,99 @@ public class phase1 {
      * Guardar a posicao e o que faz a troca parecer uma transformacao, e
      * nao uma chefe sumindo e outra nascendo.
      */
+    /**
+     * REDE: garante que o estagio de forma maligna comece com a forma
+     * maligna, tenha o gatilho chegado ou nao.
+     *
+     * Os estagios 3, 5 e 7 SAO a segunda parte da luta. Se a transformacao
+     * nao acontecer, o jogador refaz o combate anterior com o sprite
+     * errado — e o pior e que nada nesse estado parece defeito: a fase
+     * roda, a chefe atira, a barra desce. Foi exatamente o que aconteceu
+     * com a Adriana, e so deu pra descobrir porque alguem jogou e
+     * percebeu que a segunda parte tinha sumido.
+     *
+     * A causa (o gatilho de saida sendo descartado no ultimo frame da
+     * cena) esta consertada no Cutscene.acabou(). Isto aqui e o cinto: o
+     * estagio confere o que ele PRECISA em vez de confiar que o aviso
+     * chegou. Tambem cobre o ESC no meio da conversa.
+     */
+    private void garantirFormaTransformada() {
+
+        if (chefeJaTransformou || Main.emDialogo()) {
+            return;
+        }
+
+        if (!chefeSpawnado || chefeAtual == null || !chefeAtual.isAlive()) {
+            return;
+        }
+
+        transformarChefe();
+
+        // A conversa ja acabou, entao ninguem mais vai chamar o
+        // comecarLuta() por ela: o transformarChefe() deixa a chefe nova
+        // em modo dialogo, e sem isto ela ficaria voando calada pra sempre.
+        if (chefeAtual != null) {
+            chefeAtual.comecarLuta();
+        }
+    }
+
+    /**
+     * O ESTOURO DA TRANSFORMACAO — varios, e nao um.
+     *
+     * ELE JA FOI GRANDE POR ACIDENTE. Enquanto o gatilho repetia sessenta
+     * vezes por segundo (ver Cutscene.consumirGatilho), cada repeticao
+     * soltava uma explosao nova em cima da anterior: dezenas sobrepostas,
+     * nascendo em posicoes ligeiramente diferentes porque a chefe estava
+     * sendo recriada a cada frame. Era um bug, mas o que aparecia na tela
+     * era um estouro enorme e irregular — e era assim que voce conhecia a
+     * cena.
+     *
+     * Consertado o bug, sobrou UMA explosao de 78 ticks, e ela parece
+     * pequena. Nao porque encolheu: porque a referencia era um defeito.
+     *
+     * A solucao nao e trazer o defeito de volta (ele trocava a chefe e
+     * ressetava o HP), e sim fazer de proposito o que ele fazia por
+     * acaso. Mesma receita do fim do RED RECOGNA: estouros ESPALHADOS NO
+     * ESPACO, num anel em volta do centro. Como a Explosao ja tem vida
+     * propria longa, disparados juntos em pontos diferentes eles se
+     * sobrepoem e leem como UM estouro grande e irregular. Um so,
+     * centralizado, le como um circulo — bonito e pequeno.
+     *
+     * O anel e IMPAR e girado por um angulo quebrado de proposito: numero
+     * par com angulo redondo desenha uma flor simetrica, e simetria aqui
+     * denuncia que aquilo foi desenhado.
+     */
+    private void estourarTransformacao(double px, double py) {
+
+        src.Explosao.vermelha(px, py);
+
+        int quantos = Math.max(0, Config.getInt("chefe.estourosDaTransformacao", 5));
+        double raio = Config.getDouble("chefe.raioDosEstourosDaTransformacao", 62);
+
+        for (int i = 0; i < quantos; i++) {
+
+            double a = 2 * Math.PI * i / quantos + 0.37;
+
+            src.Explosao.vermelha(px + Math.cos(a) * raio,
+                                  py + Math.sin(a) * raio * 0.8);
+        }
+    }
+
     private void transformarChefe() {
+
+        // CINTO DE SEGURANCA: uma vez por estagio, ponto.
+        //
+        // A causa do gatilho repetido foi consertada no consumirGatilho(),
+        // mas o estrago que ele causava aqui era grande demais pra
+        // depender de um lugar so estar certo — cada repeticao trocava a
+        // chefe por uma nova com HP cheio. Este flag e barato e transforma
+        // um bug futuro em "nao aconteceu nada" em vez de "a luta nunca
+        // acaba".
+        if (chefeJaTransformou) {
+            return;
+        }
+
+        chefeJaTransformou = true;
 
         double px = (chefeAtual != null) ? chefeAtual.getX() : Main.CAMPO_X + Main.CAMPO_W / 2.0;
         double py = (chefeAtual != null) ? chefeAtual.getY() : Main.CAMPO_Y + 120;
@@ -295,12 +432,31 @@ public class phase1 {
         chefeAtual.entrarEmDialogo();
         Main.enemies.add(chefeAtual);
 
+
         // VERMELHO: a cor da corrupcao no jogo inteiro (balas inimigas,
         // cachorros, forma maligna). O estouro sai da posicao dela, entao
         // o olho ja esta no lugar certo quando o sprite novo aparece.
-        src.Explosao.vermelha(px, py);
+        estourarTransformacao(px, py);
 
         Som.tocar(Som.SPELL_QUEBRA);
+
+        // A CONVERSA SAI DA FRENTE PRA A EXPLOSAO ACONTECER.
+        //
+        // Sem isto, o estouro nascia atras da caixa de dialogo e do veu
+        // escuro dela: o jogador via o clarao vazando pelas beiradas de um
+        // texto, e ainda tinha que apertar ENTER pra a cena andar depois
+        // que a transformacao ja tinha acontecido.
+        //
+        // Quem manda a pausa e a fase, e nao a cutscene, porque quem sabe
+        // quanto dura o efeito e quem disparou ele. A explosao vive
+        // explosao.ticksDeVida (78) — a pausa acompanha esse numero em vez
+        // de repetir 78 aqui, pra os dois nao se separarem quando alguem
+        // mexer num deles.
+        if (Main.cutsceneAtual != null) {
+            Main.cutsceneAtual.pausarParaCena(
+                    Config.getInt("cutscene.pausaDaTransformacao",
+                                  Config.getInt("explosao.ticksDeVida", 78) + 20));
+        }
     }
 
     /**
@@ -365,7 +521,7 @@ public class phase1 {
 
             case 2:
             case 3:
-                faixa = temaDeChefe(Config.getString("adriana.musica", "audio/kim_jung.wav"));
+                faixa = temaDeChefe(Config.getString("adriana.musica", "audio/world_revolving.wav"));
                 break;
 
             case 4:
@@ -442,6 +598,7 @@ public class phase1 {
         // proposito — cada conversa acontece uma vez por partida.
         chefeSpawnado = false;
         chefeAtual = null;
+        chefeJaTransformou = false;
     }
 
     /* =====================================================
@@ -808,6 +965,14 @@ public class phase1 {
      */
     private BossEnemy chefeAtual = null;
 
+    /**
+     * A chefe DESTE estagio ja se transformou?
+     *
+     * Zerado no proximoEstagio() junto com o resto do que e do estagio:
+     * cada chefe se transforma uma vez, mas sao tres chefes por partida.
+     */
+    private boolean chefeJaTransformou = false;
+
     /** true quando o chefe do estagio ja nasceu e ja morreu. */
     private boolean chefeDerrotado() {
         return chefeSpawnado && chefeAtual != null && !chefeAtual.isAlive();
@@ -891,10 +1056,21 @@ public class phase1 {
         //    Gatilho — ver atenderPedidosDaConversa(). Foi assim que a
         //    Adriana parou de aparecer durante o trecho do SANTO JAVA.
         if (!cutsceneTransformacaoMostrada) {
+
+            // A chefe entra ANTES da conversa, na forma base: e ela que o
+            // gatilho CHEFE_TRANSFORMA vai transformar. Ver
+            // porChefeEmCenaParaTransformar.
+            porChefeEmCenaParaTransformar("sprites/ambient/sala7.png");
+
             cutsceneTransformacaoMostrada = true;
             Main.mostrarCutscene(Cutscene.criarTransformacaoAdriana());
             return;
         }
+
+        // A chefe TEM que estar na forma maligna daqui pra frente. Se o
+        // gatilho da cena nao chegou (ESC, ou o defeito de entrega que ja
+        // foi consertado), isto transforma ela assim que a conversa fecha.
+        garantirFormaTransformada();
 
         // 2) Sem conversa (jogador ja viu, ou pulou com F2): a chefe entra
         //    direto, ja lutando.
@@ -1011,10 +1187,18 @@ public class phase1 {
         //    Gatilho — ver atenderPedidosDaConversa(). Foi assim que a
         //    Adriana parou de aparecer durante o trecho do SANTO JAVA.
         if (!cutsceneClaytonTransfMostrada) {
+
+            porChefeEmCenaParaTransformar("sprites/ambient/dco.png");
+
             cutsceneClaytonTransfMostrada = true;
             Main.mostrarCutscene(Cutscene.criarTransformacaoClayton());
             return;
         }
+
+        // A chefe TEM que estar na forma maligna daqui pra frente. Se o
+        // gatilho da cena nao chegou (ESC, ou o defeito de entrega que ja
+        // foi consertado), isto transforma ela assim que a conversa fecha.
+        garantirFormaTransformada();
 
         // 2) Sem conversa (jogador ja viu, ou pulou com F2): a chefe entra
         //    direto, ja lutando.
@@ -1136,10 +1320,18 @@ public class phase1 {
         //    Gatilho — ver atenderPedidosDaConversa(). Foi assim que a
         //    Adriana parou de aparecer durante o trecho do SANTO JAVA.
         if (!cutscenePapaTransfMostrada) {
+
+            porChefeEmCenaParaTransformar("sprites/ambient/lepec.png");
+
             cutscenePapaTransfMostrada = true;
             Main.mostrarCutscene(Cutscene.criarTransformacaoPapa());
             return;
         }
+
+        // A chefe TEM que estar na forma maligna daqui pra frente. Se o
+        // gatilho da cena nao chegou (ESC, ou o defeito de entrega que ja
+        // foi consertado), isto transforma ela assim que a conversa fecha.
+        garantirFormaTransformada();
 
         // 2) Sem conversa (jogador ja viu, ou pulou com F2): a chefe entra
         //    direto, ja lutando.
@@ -1218,6 +1410,21 @@ public class phase1 {
             g.drawString("onda " + ondasLancadas + "/" + totalDeOndas
                        + "  " + composicao,
                          Main.CAMPO_X + 6, Main.CAMPO_Y + 16);
+
+            // O ESTADO DA FASE, e nao so o da onda.
+            //
+            // O print de um jogo travado mostrava "onda 0/10" e mais nada:
+            // dava pra ver que nenhuma onda estava rodando, mas nao em que
+            // estagio ele tinha parado nem se havia chefe. Sem isso, o
+            // unico jeito de descobrir onde ele emperrou e adivinhando.
+            g.drawString("estagio " + stage + "/" + ULTIMO_ESTAGIO
+                       + (acabou() ? " (ACABOU)" : "")
+                       + "  t=" + time
+                       + "  chefe=" + (chefeSpawnado ? "spawnado" : "nao")
+                       + "/" + (chefeAtual == null ? "null"
+                                : (chefeAtual.isAlive() ? "vivo" : "morto"))
+                       + (Main.emDialogo() ? "  DIALOGO" : ""),
+                         Main.CAMPO_X + 6, Main.CAMPO_Y + 30);
         }
     }
 

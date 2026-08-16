@@ -274,6 +274,21 @@ if 'src/Main.java' in fonte:
         if nome+'.clear()' not in rein:
             erros.append(f"FIACAO Main.{nome}: nao e zerada em reiniciarPartida()")
 
+# ---- bala que acerta o jogador tem que SABER machucar ele ----
+# O Main nao cuida disso: ele so trata graze e as balas do jogador contra
+# inimigos. Quem confere "encostei no jogador?" e cada tipo de bala, no
+# proprio tick. Esquecer o bloco nao da erro nenhum — da um ataque bonito
+# e inofensivo, que foi o que aconteceu com o SolBullet do RED RECOGNA.
+for arq, txt in fonte.items():
+    if not arq.startswith('src/bulletTypes/') or arq.endswith('/Bullet.java'):
+        continue
+    corpo = sem_comentarios(txt)
+    if 'hitPlayer = true' not in corpo:
+        continue
+    if 'levarDano' not in corpo:
+        erros.append(f"BALA {arq}: marca hitPlayer=true mas nunca chama "
+                     f"player.levarDano() — ela atravessa o jogador sem ferir")
+
 # ---- gatilhos de cutscene: disparados por alguma fala E tratados ----
 # O fluxo de chefe entrando/transformando depende inteiramente disso.
 # Um gatilho declarado e nunca disparado (ou disparado e nunca tratado)
@@ -286,10 +301,27 @@ if 'src/Cutscene.java' in fonte and 'src/phases/phase1.java' in fonte:
         for nome in re.findall(r'^\s*([A-Z_]+)\s*,?\s*$', m.group(1), re.M):
             if nome == 'NENHUM':
                 continue
-            if not re.search(r'\.com\(Gatilho\.%s\)' % nome, cut):
+            # Duas formas de disparar: .com() na ENTRADA da fala e
+            # .aoSair() quando o jogador dispensa ela. A checagem so
+            # conhecia a primeira, e por isso acusou "ninguem dispara" no
+            # dia em que o CHEFE_TRANSFORMA passou pra segunda.
+            if not re.search(r'\.(com|aoSair)\(Gatilho\.%s\)' % nome, cut):
                 erros.append(f"GATILHO {nome}: nenhuma fala dispara")
             if ('Gatilho.' + nome) not in fase:
                 erros.append(f"GATILHO {nome}: a fase nunca trata")
+
+    # ---- a cena nao pode FECHAR com pedido ainda na caixa ----
+    # Bug real: o gatilho de saida e disparado no ultimo frame da cena e
+    # quem le e a fase, que roda DEPOIS. Se o acabou() nao esperar o
+    # pedido ser lido, o Main fecha o dialogo antes e o pedido some.
+    # Foi assim que a segunda parte da luta da Adriana deixou de existir,
+    # sem nenhum erro em lugar nenhum.
+    if '.aoSair(' in cut:
+        m2 = re.search(r'public boolean acabou\(\)\s*\{(.*?)\n    \}', cut, re.S)
+        if m2 and 'gatilhoPendente' not in m2.group(1):
+            erros.append("CUTSCENE acabou(): existe gatilho de saida (.aoSair) "
+                         "mas o acabou() nao espera o gatilhoPendente ser "
+                         "consumido — o pedido da ultima fala vai ser perdido")
 
 # ---- config: chaves usadas x definidas ----
 props={}

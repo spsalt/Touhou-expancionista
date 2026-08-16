@@ -46,12 +46,12 @@ public class Creditos {
     private double escala = 1;
 
     /** Congelado no comeco: os numeros nao podem mudar durante os creditos. */
-    private final int pontos;
-    private final int graze;
-    private final int continues;
-    private final int nivel;
-    private final int vidas;
-    private final int moedas;
+    private int pontos;
+    private int graze;
+    private int continues;
+    private int nivel;
+    private int vidas;
+    private int moedas;
 
     public Creditos() {
 
@@ -60,12 +60,21 @@ public class Creditos {
         this.sobe     = Math.max(1, Config.getInt("creditos.ticksSobe", 460));
         this.fecha    = Math.max(1, Config.getInt("creditos.ticksFecha", 70));
         this.obrigado = Math.max(1, Config.getInt("creditos.ticksObrigado", 90));
+    }
 
-        // A PARTIDA E FOTOGRAFADA AQUI, e nao lida na hora de desenhar.
-        //
-        // Durante os creditos o jogo continua existindo por baixo; se a
-        // tela lesse o Player a cada frame, qualquer coisa que ainda
-        // mexesse nele mudaria os numeros no meio da leitura.
+    /**
+     * Volta pro comeco e FOTOGRAFA a partida que acabou.
+     *
+     * Os numeros sao copiados aqui e nao lidos na hora de desenhar: os
+     * creditos rodam com o jogo ainda existindo por baixo, e o
+     * reiniciarPartida() que vem depois zera o Player inteiro. Lendo a
+     * cada frame, a tela final mostraria zeros.
+     */
+    public void reiniciar() {
+
+        t = 0;
+        acabou = false;
+
         this.pontos    = (Main.player != null) ? Main.player.getPontuacao() : 0;
         this.graze     = (Main.player != null) ? Main.player.getGraze() : 0;
         this.nivel     = (Main.player != null) ? Main.player.getLevel() : 1;
@@ -206,6 +215,18 @@ public class Creditos {
      */
     private void desenharObrigado(Graphics2D g, double f) {
 
+        // O CLAMP AQUI E O QUE IMPEDIA A TELA DE CRASHAR.
+        //
+        // O 'f' chega como (t - fim) / duracao e o t NAO PARA de crescer
+        // depois que a sequencia acaba — a tela fica esperando o ENTER.
+        // Passado o fade, f passa de 1, o alfa passa de 255 e o
+        // construtor de java.awt.Color lanca IllegalArgumentException na
+        // cara. Ou seja: os creditos apareciam certinho e explodiam um
+        // segundo e meio depois, sempre.
+        //
+        // Color e implacavel com isso: qualquer componente fora de 0..255
+        // e excecao, nao satura. Todo alfa calculado precisa ser preso
+        // antes de virar cor.
         int a = (int) (255 * Math.max(0, Math.min(1, f)));
 
         int cx = Main.WIDTH / 2;

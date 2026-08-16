@@ -126,8 +126,22 @@ public class Main extends JFrame implements Runnable, KeyListener {
     /** A lojinha do Perea. Abre uma vez, entre o Clayton e o PAPA. */
     public static LojaDoPerea loja;
 
-    /** A sequencia final: a foto no uba e o agradecimento. */
-    public static Creditos creditos;
+    /**
+     * A sequencia final: a foto no uba e o agradecimento.
+     *
+     * Criada NO STARTUP junto com os outros menus, e nao na hora de
+     * mostrar. Isso nao e organizacao, e correcao de bug: o objeto era
+     * criado na thread do JOGO e lido na thread do SWING, sem nenhuma
+     * barreira de memoria entre as duas. A thread do desenho podia
+     * enxergar o gameState ja em "Creditos" e o campo ainda em null —
+     * NullPointerException no primeiro frame da tela final, de forma
+     * intermitente e impossivel de reproduzir de proposito.
+     *
+     * Existindo desde o inicio, nao ha instante nenhum em que ela seja
+     * null. E o mesmo padrao do menu de continue e da lojinha, que nunca
+     * deram problema justamente por isso.
+     */
+    public static Creditos creditos = new Creditos();
 
     /**
      * Quantos continues o jogador gastou nesta partida.
@@ -574,7 +588,10 @@ public class Main extends JFrame implements Runnable, KeyListener {
      */
     public static void mostrarCreditos() {
 
-        creditos = new Creditos();
+        // reiniciar() e nao "new": ver o comentario do campo. O objeto
+        // existe desde o startup; aqui ele so volta pro comeco e
+        // fotografa os numeros desta partida.
+        creditos.reiniciar();
         gameState = "Creditos";
     }
 
@@ -1034,15 +1051,33 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
             } else if (gameState.equals("Creditos")) {
 
-            creditos.tick();
+                // AQUI ESTAVA O BUG DA CENA FINAL.
+                //
+                // Este ramo tinha, colado por engano, o MESMO bloco que ja
+                // existe no tick(): creditos.tick(), o teste do acabou(), o
+                // reiniciarPartida() e a volta pro menu. Nao havia nenhuma
+                // linha desenhando os creditos.
+                //
+                // O resultado era exatamente o que apareceu no jogo: o
+                // gameState virava "Creditos", a fase parava de existir e a
+                // tela continuava mostrando a ULTIMA cena renderizada — o
+                // UBA de fundo, o estudante parado, zero inimigos, sem
+                // caixa de fala e sem "ESTAGIO N" (que some quando a fase
+                // acabou). Parecia o jogo travado num estagio vazio; na
+                // verdade os creditos estavam rodando invisiveis.
+                //
+                // De quebra, o bloco mexia em estado do jogo (reiniciar a
+                // partida, trocar de estado, parar a musica) de dentro do
+                // paintComponent, ou seja, na thread do Swing enquanto a
+                // thread do jogo mexia nas mesmas variaveis. O avanco do
+                // tempo tambem corria dobrado, uma vez por tick e outra por
+                // frame.
+                //
+                // O render agora so DESENHA. Quem faz os creditos andarem e
+                // o tick(), como todo o resto do jogo.
+                creditos.render(g);
 
-            if (creditos.acabou()) {
-                reiniciarPartida();
-                musica.parar();
-                gameState = "Menu";
-            }
-
-        } else if (gameState.equals("Loja")) {
+            } else if (gameState.equals("Loja")) {
 
                 loja.render(g);
 

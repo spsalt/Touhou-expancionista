@@ -1047,6 +1047,31 @@ public class Player {
     }
 
     /** Impede o jogador de sair da arena. */
+    /**
+     * ARRASTA O JOGADOR, sem ser ele quem mandou.
+     *
+     * Existe pro sol do RED RECOGNA puxar a alma pra dentro dele. E a
+     * unica coisa no jogo que mexe no jogador contra a vontade dele, e por
+     * isso passa por aqui em vez de escrever no x/y direto: assim o limite
+     * do campo continua valendo (nada de ser arrastado pra fora da tela) e
+     * existe UM lugar pra procurar quando alguem perguntar "por que meu
+     * personagem anda sozinho?".
+     *
+     * Respeita o travado: durante a maquina de Turing o jogador ja esta
+     * preso de proposito, e um puxao ali seria movimento fantasma.
+     */
+    public void puxar(double dx, double dy) {
+
+        if (travado) {
+            return;
+        }
+
+        x += dx;
+        y += dy;
+
+        prenderNoCampo();
+    }
+
     private void prenderNoCampo() {
 
         double margem = 8;
