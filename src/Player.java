@@ -940,11 +940,23 @@ public class Player {
                 0, 0,
                 raioBala,
                 false,
-                new Color(120, 220, 255)
+                // A COR VEM DA SKIN. Ela nao e enfeite: e o que separa o
+                // leque do ponteiro e do ricochete quando a tela enche.
+                // Por isso cada personagem tem TRES tons distintos, e nao
+                // o mesmo tom repetido tres vezes.
+                Skin.atual().getCorDoLeque()
             );
 
             bala.setDano(danoBala);
             bala.setSprite(Config.getString("tiro.leque.sprite", "sprites/GFX/bala_leque.png"));
+
+            // E O SPRITE E RECOLORIDO PELA COR DA SKIN.
+            //
+            // Passar a cor no construtor nao bastava: com sprite, o
+            // desenho ignora a cor. O bala_leque.png e azul, entao o leque
+            // do Lucas continuava saindo azul mesmo com a paleta laranja
+            // certinha do outro lado.
+            bala.setTintura(Skin.atual().getCorDoLeque());
 
             Main.bullets.add(bala);
         }
@@ -983,7 +995,7 @@ public class Player {
                 taxaDeGiroPonteiro,
                 raioPonteiro,
                 danoBala * fatorDanoPonteiro,
-                new Color(150, 255, 170)
+                Skin.atual().getCorDoPonteiro()
             ));
         }
     }
@@ -1008,7 +1020,7 @@ public class Player {
                 raioRicochete,
                 danoBala * fatorDanoRicochete,
                 quiquesRicochete,
-                new Color(255, 180, 90)
+                Skin.atual().getCorDoRicochete()
             ));
         }
     }
@@ -1316,7 +1328,12 @@ public class Player {
                 py[i] = (int) (y + Math.sin(a) * r);
             }
 
-            g.setColor(new Color(120, 200, 255, anel == 0 ? 95 : 60));
+            // Os dois aneis da armadura seguem a COR DO PERSONAGEM: eles
+            // sao a armadura que a cerimonia acabou de fechar, e ficar
+            // azul num personagem laranja quebrava a ligacao entre as
+            // duas coisas.
+            g.setColor(Skin.variar(Skin.atual().getCorDaAura(), 0.55, 1.0,
+                                   anel == 0 ? 95 : 60));
             g.drawPolygon(px, py, 6);
         }
 
@@ -1376,7 +1393,8 @@ public class Player {
 
             double r = raioHalo * i / 4.0;
 
-            g.setColor(new Color(190, 120, 255, 34 + (4 - i) * 26));
+            g.setColor(Skin.variar(Skin.atual().getCorDaAura(), 0.60, 1.0,
+                                   34 + (4 - i) * 26));
             g.fillOval((int) (x - r), (int) (y - r), (int) (r * 2), (int) (r * 2));
         }
 
@@ -1485,9 +1503,14 @@ public class Player {
         // Com a armadura ligada, o retrato passa a ser o expansivo — e o
         // mesmo sprite usado nas cutscenes depois do "ESPANDAAAAA", entao
         // a troca e coerente com o que o jogador acabou de ver.
+        // Os caminhos vem da SKIN ESCOLHIDA, e nao mais de duas chaves
+        // fixas do config: e o que permite trocar de personagem no menu
+        // sem nada aqui saber que existe mais de um.
+        Skin skin = Skin.atual();
+
         BufferedImage img = Assets.get(armadura
-                ? Config.getString("jogador.spriteExpansivo", "sprites/player/estudante_expansivo.png")
-                : Config.getString("jogador.sprite", "sprites/player/estudante.png"));
+                ? skin.getSpriteExpansivo()
+                : skin.getSprite());
 
         if (img == null) {
             g.setColor(Color.WHITE);
@@ -1507,9 +1530,12 @@ public class Player {
         // tamanho original. A aura passa a extrapolar a caixa, que e
         // exatamente o que se quer: a armadura tem que parecer maior que
         // o cara sem armadura.
-        double correcao = armadura
-                        ? Config.getDouble("jogador.escalaDoExpansivo", 1.53)
-                        : 1.0;
+        //
+        // O fator e por SKIN porque depende de quanta moldura cada desenho
+        // tem: o do Lucas tem um quadro laranja em volta que ocupa mais do
+        // que a aura do estudante, entao os dois precisam de correcoes
+        // diferentes pra o rosto sair do mesmo tamanho.
+        double correcao = armadura ? skin.getEscalaDoExpansivo() : 1.0;
 
         int lado = (int) (tamanhoSprite * correcao);
 
@@ -1523,13 +1549,8 @@ public class Player {
         //
         // Entao o desenho e ancorado pelo CENTRO DO ROSTO, e nao pelo
         // centro da imagem.
-        double centroX = armadura
-                ? Config.getDouble("jogador.spriteExpansivo.centroX", 0.443)
-                : Config.getDouble("jogador.sprite.centroX", 0.5);
-
-        double centroY = armadura
-                ? Config.getDouble("jogador.spriteExpansivo.centroY", 0.486)
-                : Config.getDouble("jogador.sprite.centroY", 0.5);
+        double centroX = armadura ? skin.getCentroXExpansivo() : skin.getCentroX();
+        double centroY = armadura ? skin.getCentroYExpansivo() : skin.getCentroY();
 
         int x0 = (int) (x - lado * centroX);
         int y0 = (int) (y - lado * centroY);
@@ -1734,7 +1755,7 @@ public class Player {
 
         // ROXO: a cor da alma e do Santo Java — o poder que vem DELE, em
         // oposicao ao vermelho da corrupcao que vem dos chefes.
-        Explosao.roxa(x, y);
+        Explosao.daAura(x, y);
 
         Som.tocar(Som.SUBIR_NIVEL);
     }

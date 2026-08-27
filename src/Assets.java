@@ -105,6 +105,126 @@ public final class Assets {
         return saida;
     }
 
+    private static final Map<String, BufferedImage> cacheTingido = new HashMap<>();
+
+    /**
+     * A imagem RECOLORIDA pra uma cor, ja no tamanho pedido.
+     *
+     * POR QUE ISSO PRECISOU EXISTIR
+     * -----------------------------
+     * As balas do jogador tem sprite (bala_leque.png e companhia), e o
+     * desenharSprite() do Bullet, quando acha o PNG, desenha ELE e ignora
+     * a cor da bala por completo. Ou seja: a paleta da skin estava sendo
+     * calculada, guardada e passada adiante — e nao aparecia em lugar
+     * nenhum, porque o PNG azul era desenhado por cima de tudo.
+     *
+     * COMO A RECOLORACAO E FEITA: troca o MATIZ, mantem o BRILHO.
+     *
+     * Nao da pra so multiplicar pela cor nova: os PNGs ja sao coloridos
+     * (azul, verde, laranja), e multiplicar cor por cor da lama. Aqui cada
+     * pixel e convertido pra HSB, recebe o matiz da cor nova, e a
+     * saturacao dele e MULTIPLICADA pela da cor nova em vez de
+     * substituida.
+     *
+     * Essa multiplicacao e o detalhe que faz a coisa parecer desenhada e
+     * nao filtrada: o miolo branco da bala tem saturacao quase zero, entao
+     * ele continua branco; so as bordas, que sao saturadas, assumem a cor
+     * nova. O brilho (B) nao e tocado em ponto nenhum, entao o volume e as
+     * bordas duras do pixel art sobrevivem inteiros.
+     *
+     * O cache e por caminho + cor + tamanho. Ele nao cresce: sao tres
+     * sprites de bala vezes as skins que existirem.
+     */
+    public static BufferedImage getTingido(String caminho, java.awt.Color cor,
+                                           int largura, int altura) {
+
+        if (cor == null || largura <= 0 || altura <= 0) {
+            return getEscalado(caminho, largura, altura);
+        }
+
+        String chave = caminho + "#" + cor.getRGB() + "@" + largura + "x" + altura;
+
+        if (cacheTingido.containsKey(chave)) {
+            return cacheTingido.get(chave);
+        }
+
+        BufferedImage base = getEscalado(caminho, largura, altura);
+
+        if (base == null) {
+            cacheTingido.put(chave, null);
+            return null;
+        }
+
+        float[] alvo = java.awt.Color.RGBtoHSB(cor.getRed(), cor.getGreen(), cor.getBlue(), null);
+
+        // BRILHO NORMALIZADO PELO DA COR ESCOLHIDA.
+        //
+        // So trocar o matiz nao basta: o PNG do ponteiro e um verde de
+        // brilho medio, e pintar aquele mesmo brilho de amarelo da CAQUI —
+        // uma cor que nao parece nem o verde original nem o ambar do menu.
+        //
+        // Medindo o brilho medio do sprite e reescalando pro brilho da cor
+        // alvo, a bala sai com a claridade que a cor promete. Uma cor
+        // clara clareia o sprite inteiro, uma escura escurece.
+        float somaBrilho = 0;
+        int opacos = 0;
+
+        for (int y = 0; y < altura; y++) {
+            for (int x = 0; x < largura; x++) {
+
+                int argb = base.getRGB(x, y);
+
+                if (((argb >>> 24) & 0xFF) == 0) {
+                    continue;
+                }
+
+                float[] hsb = java.awt.Color.RGBtoHSB((argb >> 16) & 0xFF,
+                                                      (argb >> 8) & 0xFF,
+                                                      argb & 0xFF, null);
+                somaBrilho += hsb[2];
+                opacos++;
+            }
+        }
+
+        float medio = (opacos > 0) ? somaBrilho / opacos : 1f;
+        float ganho = (medio > 0.01f) ? alvo[2] / medio : 1f;
+
+        BufferedImage saida = new BufferedImage(largura, altura, BufferedImage.TYPE_INT_ARGB);
+
+        for (int y = 0; y < altura; y++) {
+            for (int x = 0; x < largura; x++) {
+
+                int argb = base.getRGB(x, y);
+                int a = (argb >>> 24) & 0xFF;
+
+                if (a == 0) {
+                    continue;
+                }
+
+                float[] hsb = java.awt.Color.RGBtoHSB((argb >> 16) & 0xFF,
+                                                      (argb >> 8) & 0xFF,
+                                                      argb & 0xFF, null);
+
+                // O 1.25 e compensacao: multiplicar duas saturacoes sempre
+                // da um numero menor que as duas, entao a bala saia mais
+                // lavada do que a cor escolhida no menu. O min() garante
+                // que o miolo branco (saturacao ~0) continue branco — e
+                // ele que da o "nucleo quente" das balas.
+                float sat = Math.min(1f, hsb[1] * alvo[1] * 1.25f);
+
+                float bri = Math.min(1f, hsb[2] * ganho);
+
+                int rgb = java.awt.Color.HSBtoRGB(alvo[0], sat, bri);
+
+                saida.setRGB(x, y, (a << 24) | (rgb & 0x00FFFFFF));
+            }
+        }
+
+        cacheTingido.put(chave, saida);
+
+        return saida;
+    }
+
     private static BufferedImage carregar(String caminho) {
 
         File arquivo = resolverArquivo(caminho);
@@ -154,5 +274,12 @@ public final class Assets {
     /** Esvazia o cache, forcando reler os PNGs do disco (usado no hot-reload F5). */
     public static void limparCache() {
         cache.clear();
+
+        // Os derivados TAMBEM: eles guardam copias da imagem antiga
+        // redimensionada e recolorida. Sem limpar aqui, trocar um PNG (ou
+        // uma cor de skin) e apertar F5 continuaria mostrando o antigo,
+        // porque o cache responderia antes de alguem reler o arquivo.
+        cacheEscalado.clear();
+        cacheTingido.clear();
     }
 }

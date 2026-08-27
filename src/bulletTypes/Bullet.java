@@ -33,6 +33,17 @@ public class Bullet {
     protected float opacidadeSprite = 1f;
 
     /**
+     * Cor pra RECOLORIR o sprite, ou null pra desenhar o PNG como esta.
+     *
+     * Existe porque a cor da bala (o campo 'cor' das subclasses) so vale
+     * quando NAO ha sprite: o desenharSprite() acha o PNG, desenha ele e
+     * vai embora. Era por isso que a paleta da skin do jogador nao
+     * aparecia — ela estava certa, e o bala_leque.png azul era desenhado
+     * por cima dela.
+     */
+    protected java.awt.Color tintura = null;
+
+    /**
      * Esta bala ja foi "rocada" (graze) pelo jogador?
      *
      * Cada bala so vale graze UMA vez. Sem essa marca, ficar parado ao
@@ -118,7 +129,9 @@ public class Bullet {
         // PNG a cada chamada — e o corredor dos Seguidores do IEEE chega a
         // 270 balas com sprite na tela, ou seja, 270 redimensionamentos
         // por frame sempre pro mesmo tamanho.
-        java.awt.image.BufferedImage pronta = src.Assets.getEscalado(sprite, larg, alt);
+        java.awt.image.BufferedImage pronta = (tintura == null)
+                ? src.Assets.getEscalado(sprite, larg, alt)
+                : src.Assets.getTingido(sprite, tintura, larg, alt);
 
         if (pronta != null) {
             img = pronta;
@@ -191,6 +204,11 @@ public class Bullet {
 
     public void setSprite(String sprite) {
         this.sprite = sprite;
+    }
+
+    /** Recolore o sprite pra esta cor. null volta ao PNG original. */
+    public void setTintura(java.awt.Color tintura) {
+        this.tintura = tintura;
     }
 
     public void setOpacidadeSprite(float opacidadeSprite) {

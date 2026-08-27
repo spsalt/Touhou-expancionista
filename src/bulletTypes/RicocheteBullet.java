@@ -45,6 +45,10 @@ public class RicocheteBullet extends Bullet {
 
         this.sprite = src.Config.getString("tiro.ricochete.sprite",
                                            "sprites/GFX/bala_ricochete.png");
+
+        // Ver PonteiroBullet: o PNG e recolorido pela cor da bala, senao
+        // ele se desenha por cima da paleta da skin.
+        this.tintura = cor;
     }
 
     @Override

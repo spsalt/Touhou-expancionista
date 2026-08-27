@@ -59,6 +59,13 @@ public class PonteiroBullet extends Bullet {
 
         this.sprite = src.Config.getString("tiro.ponteiro.sprite",
                                            "sprites/GFX/bala_ponteiro.png");
+
+        // O SPRITE E RECOLORIDO PELA COR DA BALA.
+        //
+        // Sem isto o campo 'cor' logo acima nao servia pra nada: quando ha
+        // PNG, o desenharSprite() desenha o PNG e ignora a cor. A paleta
+        // de cada personagem existia so na memoria.
+        this.tintura = cor;
         this.opacidadeSprite = (float) src.Config.getDouble("tiro.ponteiro.opacidade", 0.62);
     }
 

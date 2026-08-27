@@ -227,6 +227,14 @@ public class Main extends JFrame implements Runnable, KeyListener {
 
         super("Touhou Expancionista");
 
+        // AS SKINS PRIMEIRO, antes de tudo que desenha.
+        //
+        // Carregar aqui e nao "na primeira vez que alguem pedir" e o que
+        // garante que os retratos do protagonista na cutscene (que sao
+        // reescritos pelo Skin.carregar) ja estejam certos mesmo que a
+        // primeira coisa a acontecer seja a cena de introducao.
+        Skin.carregar();
+
         // IMPORTANTE: os objetos do jogo nascem ANTES de setVisible(true).
         // O Swing pode pintar o painel assim que a janela aparece, e se
         // player/menu ainda fossem null a render() quebraria com NullPointer.
@@ -714,6 +722,11 @@ public class Main extends JFrame implements Runnable, KeyListener {
         }
 
         Som.carregarConfig();
+
+        // As skins tambem: assim da pra mexer na paleta de um personagem e
+        // ver o resultado no mesmo F5, sem fechar o jogo. A ESCOLHA nao se
+        // perde — ver o comentario no Skin.carregar().
+        Skin.carregar();
 
         if (musica != null) {
             // Reabrir o clip corta a musica que estava tocando. Se a partida

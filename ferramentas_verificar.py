@@ -336,6 +336,12 @@ for a,s in fonte.items():
 # apareceria como chave faltando e todas as chaves reais como orfas.
 prefixos={k for k in usadas if k.endswith('.')}
 usadas-=prefixos
+# O prefixo tambem pode ser PASSADO ADIANTE em vez de escrito dentro do
+# Config.get: o Skin recebe "skin.lucas." no construtor e monta as chaves
+# la dentro. Entao qualquer literal com cara de caminho de chave e
+# terminado em ponto conta como prefixo, esteja onde estiver.
+for a,s in fonte.items():
+    prefixos|=set(re.findall(r'"([a-z]\w*(?:\.\w+)+\.)"',s))
 def coberta(k): return any(k.startswith(p) for p in prefixos)
 for k in sorted(usadas-set(props)): erros.append(f"CONFIG faltando no properties: {k}")
 for k in sorted(set(props)-usadas):

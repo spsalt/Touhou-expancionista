@@ -1132,10 +1132,23 @@ public class Cutscene {
        ELENCO - personagens reaproveitados entre as cenas
        ===================================================== */
 
-    private static final String SPRITE_ESTUDANTE = "sprites/player/estudante.png";
-
-    public static final Personagem ESTUDANTE = new Personagem(
-        "Estudante", SPRITE_ESTUDANTE, Lado.ESQUERDA, new Color(70, 120, 200), Som.VOZ_ESTUDANTE);
+    /**
+     * O PROTAGONISTA SEGUE A SKIN ESCOLHIDA — e por isso ele NAO e final.
+     *
+     * Todos os outros do elenco sao constantes: a Adriana e a Adriana. O
+     * jogador nao: quem esta na caixa de fala tem que ser o mesmo
+     * personagem que esta voando no campo, senao a cena passa a falar de
+     * outra pessoa.
+     *
+     * Os dois sao reconstruidos pelo aplicarSkin(), chamado toda vez que
+     * a escolha muda no menu. Isso e seguro porque as cenas sao criadas
+     * SOB DEMANDA (criarEncontroAdriana() e companhia so rodam na hora de
+     * exibir), entao elas sempre pegam a versao atual — nenhuma fala
+     * guarda um retrato velho.
+     */
+    public static Personagem ESTUDANTE = new Personagem(
+        "Estudante", "sprites/player/estudante.png", Lado.ESQUERDA,
+        new Color(70, 120, 200), Som.VOZ_ESTUDANTE);
 
     public static final Personagem ADRIANA = new Personagem(
         "Adriana", "sprites/bosses/adriana-base.png", Lado.DIREITA, new Color(200, 90, 90), Som.VOZ_ADRIANA);
@@ -1152,10 +1165,36 @@ public class Cutscene {
      * resto do quadro. Sem a correcao ele apareceria menor que a propria
      * versao sem armadura, que e o contrario do que a cena diz.
      */
-    public static final Personagem ESTUDANTE_EXPANSIVO = new Personagem(
+    // Estes dois valores iniciais sao so um lugar pra comecar: o
+    // aplicarSkin() sobrescreve os dois antes de qualquer cena existir. Nao
+    // vale a pena uma chave de config so pra um numero que nunca chega a
+    // ser usado (a escala de verdade vem da skin).
+    public static Personagem ESTUDANTE_EXPANSIVO = new Personagem(
         "Estudante", "sprites/player/estudante_expansivo.png", Lado.ESQUERDA,
-        new Color(70, 150, 220), Som.VOZ_ESTUDANTE,
-        Config.getDouble("cutscene.escalaDoExpansivo", 1.53));
+        new Color(70, 150, 220), Som.VOZ_ESTUDANTE, 1.53);
+
+    /**
+     * Refaz os dois retratos do protagonista a partir da skin escolhida.
+     *
+     * Chamado pelo Skin (na carga e em toda troca), e nao pelo menu: assim
+     * nao existe caminho em que alguem troca de personagem e esquece de
+     * avisar a cutscene. Quem muda o estado e quem avisa.
+     */
+    public static void aplicarSkin(Skin skin) {
+
+        if (skin == null) {
+            return;
+        }
+
+        ESTUDANTE = new Personagem(
+            skin.getNomeNaFala(), skin.getSprite(), Lado.ESQUERDA,
+            skin.getCorDaFala(), Som.VOZ_ESTUDANTE);
+
+        ESTUDANTE_EXPANSIVO = new Personagem(
+            skin.getNomeNaFalaExpansivo(), skin.getSpriteExpansivo(), Lado.ESQUERDA,
+            skin.getCorDaFalaExpansivo(), Som.VOZ_ESTUDANTE,
+            skin.getEscalaDoExpansivo());
+    }
 
     public static final Personagem CLAYTON = new Personagem(
         "Clayton", "sprites/bosses/clayton-base.png", Lado.DIREITA, new Color(90, 160, 200), Som.VOZ_CLAYTON);

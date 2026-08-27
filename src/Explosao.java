@@ -133,10 +133,38 @@ public class Explosao {
                 Config.getDouble("explosao.escalaDoChefe", 1.0)));
     }
 
-    /** O "ESPANDAAAAA" do estudante: roxo, um pouco menor. */
-    public static void roxa(double x, double y) {
-        Main.explosoes.add(new Explosao(x, y, ROXA,
+    /**
+     * O "ESPANDAAAAA" do jogador: na COR DA SKIN, um pouco menor.
+     *
+     * Antes era roxo fixo. O roxo era a cor do estudante, nao a cor da
+     * mecanica — com um personagem laranja em cena, o momento mais
+     * importante do roteiro continuava estourando roxo e passava a falar
+     * de outra pessoa.
+     */
+    public static void daAura(double x, double y) {
+
+        Main.explosoes.add(new Explosao(x, y, paletaDaAura(Skin.atual().getCorDaAura()),
                 Config.getDouble("explosao.escalaDoJogador", 0.8)));
+    }
+
+    /**
+     * Os quatro tons de fogo a partir de UMA cor.
+     *
+     * Do miolo pra borda: quase branco, claro, a cor cheia, e uma versao
+     * escura pro contorno. E a mesma progressao das paletas escritas a mao
+     * ali em cima — o que muda e que agora ela e derivada, entao um
+     * personagem novo ganha um estouro coerente sem ninguem escolher
+     * quatro cores na mao (e sem ninguem escolher quatro cores que nao
+     * combinam).
+     */
+    private static Color[] paletaDaAura(Color base) {
+
+        return new Color[] {
+            Skin.variar(base, 0.10, 1.00, 255),
+            Skin.variar(base, 0.45, 1.00, 255),
+            Skin.variar(base, 1.00, 0.95, 255),
+            Skin.variar(base, 1.00, 0.55, 255),
+        };
     }
 
     /* =========================

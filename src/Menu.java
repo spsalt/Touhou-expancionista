@@ -15,13 +15,46 @@ import java.awt.image.BufferedImage;
  */
 public class Menu {
 
-    private String[] options = { "Jogar", "Sair" };
+    private String[] options = { "Jogar", "Personagem", "Sair" };
     private int selected = 0;
+
+    /**
+     * Quantos ticks faz que a skin mudou. So pra o brilho do aviso.
+     *
+     * Sem nenhuma resposta visual, apertar a seta com o retrato no canto
+     * da tela nao parece ter feito nada — o olho esta na lista de opcoes,
+     * nao no retrato.
+     */
+    private int piscaDaTroca = 0;
 
     public Menu() {
     }
 
     public void tick() {
+
+        if (piscaDaTroca > 0) {
+            piscaDaTroca--;
+        }
+
+        // O SELETOR DE PERSONAGEM RESPONDE ESQUERDA/DIREITA.
+        //
+        // Nao e uma tela separada de proposito. Escolher personagem e uma
+        // decisao de um segundo, e mandar o jogador entrar num submenu,
+        // escolher e voltar custa mais atencao do que a decisao vale. Na
+        // propria linha, ele ve o nome mudando e o retrato trocando junto.
+        if (options[selected].equals("Personagem") && (Main.left || Main.right)) {
+
+            int passo = Main.left ? -1 : 1;
+
+            Main.left = false;
+            Main.right = false;
+
+            Skin.trocar(passo);
+            Som.tocar(Som.MENU_MOVER);
+
+            piscaDaTroca = 24;
+            return;
+        }
 
         // As flags sao zeradas na hora de usar pra o menu nao andar
         // varias casas com um toque so (o tick roda 60x por segundo).
@@ -71,6 +104,13 @@ public class Menu {
                 }
                 break;
 
+            case "Personagem":
+                // ENTER aqui so avanca pro proximo, pra quem nao percebeu
+                // que da pra usar as setas nao ficar preso na linha.
+                Skin.trocar(1);
+                piscaDaTroca = 24;
+                break;
+
             case "Sair":
                 System.exit(0);
                 break;
@@ -118,19 +158,46 @@ public class Menu {
 
             boolean ativa = (i == selected);
 
+            String texto = options[i];
+
+            // A LINHA DO PERSONAGEM MOSTRA A ESCOLHA NELA MESMA.
+            //
+            // "Personagem  < Lucas >" diz o que esta escolhido E como
+            // trocar, em uma linha. Escrever so "Personagem" obrigaria uma
+            // legenda em outro canto explicando as setas.
+            if (texto.equals("Personagem")) {
+                texto = texto + "   < " + Skin.atual().getNome() + " >";
+            }
+
             g.setColor(ativa ? new Color(255, 90, 90) : Color.WHITE);
-            g.drawString((ativa ? "> " : "  ") + options[i], centroX - 60, 420 + i * 40);
+            g.drawString((ativa ? "> " : "  ") + texto, centroX - 60, 420 + i * 40);
         }
 
         g.setFont(new Font("Monospaced", Font.PLAIN, 14));
         g.setColor(new Color(120, 120, 120));
         g.drawString("Setas/WASD para navegar - ENTER para confirmar", centroX - 190, Main.HEIGHT - 40);
+
+        if (options[selected].equals("Personagem")) {
+            g.setColor(new Color(255, 200, 120));
+            g.drawString("esquerda/direita troca de personagem",
+                         centroX - 150, Main.HEIGHT - 62);
+        }
     }
 
-    /** Retrato do estudante (protagonista) no canto, tipo "carta de personagem". */
+    /**
+     * A CARTA DE PERSONAGEM: retrato, nome e a paleta dos tiros dele.
+     *
+     * As tres bolinhas de cor embaixo nao sao enfeite — sao a informacao
+     * que muda de verdade entre um personagem e outro. O rosto voce
+     * reconhece na hora; ja "qual vai ser a cor dos meus tiros" so daria
+     * pra descobrir entrando na fase, e voltar pro menu pra trocar depois
+     * de ver e exatamente o passeio que este painel evita.
+     */
     private void desenharRetratoDoJogador(Graphics2D g) {
 
-        BufferedImage retrato = Assets.get("sprites/player/estudante.png");
+        Skin skin = Skin.atual();
+
+        BufferedImage retrato = Assets.get(skin.getSprite());
 
         if (retrato == null) {
             return;
@@ -140,19 +207,42 @@ public class Menu {
         int x = Main.WIDTH - tam - 36;
         int y = 30;
 
-        // Anel dourado por baixo do retrato, meio pixel maior que ele —
-        // fica parecendo uma moldura em vez de so colar a foto na tela.
-        g.setColor(new Color(255, 220, 120));
+        // A moldura acende por um instante quando voce troca: o olho esta
+        // na lista de opcoes, e sem isso a troca acontece fora do campo de
+        // visao e parece que a tecla nao fez nada.
+        int brilho = (int) (120 * (piscaDaTroca / 24.0));
+
+        g.setColor(new Color(255,
+                             Math.min(255, 220 + brilho / 4),
+                             Math.min(255, 120 + brilho)));
         g.fillOval(x - 4, y - 4, tam + 8, tam + 8);
 
         g.drawImage(retrato, x, y, tam, tam, null);
 
-        g.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        g.setColor(new Color(180, 180, 180));
+        g.setFont(new Font("Monospaced", Font.BOLD, 13));
+        g.setColor(new Color(235, 235, 235));
 
-        String legenda = "voce";
         FontMetrics fm = g.getFontMetrics();
-        g.drawString(legenda, x + (tam - fm.stringWidth(legenda)) / 2, y + tam + 18);
+        String nome = skin.getNome();
+        g.drawString(nome, x + (tam - fm.stringWidth(nome)) / 2, y + tam + 18);
+
+        // A paleta: leque, ponteiro, ricochete — na mesma ordem em que o
+        // jogador destrava os tres tiros.
+        Color[] paleta = { skin.getCorDoLeque(), skin.getCorDoPonteiro(), skin.getCorDoRicochete() };
+
+        int d = 12;
+        int larguraTotal = paleta.length * d + (paleta.length - 1) * 6;
+        int px = x + (tam - larguraTotal) / 2;
+        int py = y + tam + 28;
+
+        for (int i = 0; i < paleta.length; i++) {
+
+            g.setColor(paleta[i]);
+            g.fillOval(px + i * (d + 6), py, d, d);
+
+            g.setColor(new Color(0, 0, 0, 120));
+            g.drawOval(px + i * (d + 6), py, d, d);
+        }
     }
 
     /* =========================

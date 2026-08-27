@@ -357,7 +357,10 @@ public class AscensaoDaArmadura {
             }
         }
 
-        g.setColor(new Color(235, 205, 255, a));
+        // Quase branco, mas com o matiz da aura por dentro: e o que faz o
+        // grito pertencer a cena em vez de ser um texto branco por cima
+        // dela.
+        g.setColor(Skin.variar(Skin.atual().getCorDaAura(), 0.22, 1.0, a));
         g.drawString(texto, cx, cy);
     }
 
@@ -376,7 +379,8 @@ public class AscensaoDaArmadura {
             return;
         }
 
-        g.setColor(new Color(28, 6, 48, Math.min(255, alpha)));
+        g.setColor(Skin.variar(Skin.atual().getCorDaAura(), 1.0, 0.19,
+                               Math.min(255, alpha)));
         g.fillRect(Main.CAMPO_X, Main.CAMPO_Y, Main.CAMPO_W, Main.CAMPO_H);
     }
 
@@ -402,11 +406,14 @@ public class AscensaoDaArmadura {
 
             int alpha = (int) (90 + 165 * perto);
 
-            int r = (int) (150 + 90 * f.matiz);
-            int gg = (int) (60 + 40 * (1 - f.matiz));
-            int b = 255;
-
-            g.setColor(new Color(Math.min(255, r), Math.min(255, gg), b, Math.min(255, alpha)));
+            // O matiz sorteado de cada fiapo vira uma VARIACAO em cima da
+            // cor da aura, e nao mais um roxo fixo: um feixe de energia
+            // todo do mesmo tom parece um risco chapado, e a variacao e o
+            // que da a sensacao de calor.
+            g.setColor(Skin.variar(Skin.atual().getCorDaAura(),
+                                   0.65 + 0.5 * f.matiz,
+                                   0.85 + 0.15 * f.matiz,
+                                   Math.min(255, alpha)));
 
             g.drawLine((int) f.x, (int) f.y,
                        (int) (f.x - f.vx * 3.2), (int) (f.y - f.vy * 3.2));
@@ -435,7 +442,8 @@ public class AscensaoDaArmadura {
             double raio = base * (0.45 + i * 0.22) * pulso;
             int alpha = (int) (f * (40 + 40 * (4 - i)));
 
-            g.setColor(new Color(150, 70, 255, Math.min(190, alpha)));
+            g.setColor(Skin.variar(Skin.atual().getCorDaAura(), 1.0, 1.0,
+                                   Math.min(190, alpha)));
             g.fillOval((int) (x - raio), (int) (y - raio), (int) (raio * 2), (int) (raio * 2));
         }
 
@@ -444,7 +452,8 @@ public class AscensaoDaArmadura {
 
         double raio = base * pulso;
 
-        g.setColor(new Color(215, 180, 255, (int) (f * 220)));
+        g.setColor(Skin.variar(Skin.atual().getCorDaAura(), 0.35, 1.0,
+                               (int) (f * 220)));
         g.drawOval((int) (x - raio), (int) (y - raio), (int) (raio * 2), (int) (raio * 2));
 
         g.setStroke(anterior);
